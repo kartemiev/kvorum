@@ -104,6 +104,44 @@ def test_fallback_chain_is_supported(tmp_path):
     assert [f.provider for f in seat.fallback_chain] == ["b", "c"]
 
 
+def test_model_alias_resolves_per_provider(tmp_path):
+    """One logical model maps to each provider's own id (per-provider naming)."""
+    data = {
+        "providers": {
+            "a": {"base_url": "https://a.example/v1", "api_key_env": ["KA"]},
+            "b": {"base_url": "https://b.example/v1", "api_key_env": ["KB"]},
+        },
+        "model_aliases": {"demo-model": {"a": ["a-id-1", "a-id-2"], "b": ["b-id"]}},
+        "seats": [{"seat_id": "s", "seat": "S", "role": "r", "provider": "a",
+                   "model": "demo-model", "fallback": [{"provider": "b"}]}],
+        "quorum": {"required": 1},
+    }
+    path = tmp_path / "panel.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    seat = load_panel(path).seats[0]
+    assert seat.model_alias == "demo-model"
+    assert seat.model == "a-id-1"                          # primary provider's id
+    assert seat.model_ids_for("a") == ("a-id-1", "a-id-2")  # ordered alternatives
+    assert seat.model_ids_for("b") == ("b-id",)             # fallback's own name
+    # a fallback that does not override `model` inherits the parent's default
+    assert seat.model_ids_for("c") == ("a-id-1",)
+
+
+def test_fallback_model_defaults_to_parent_when_omitted(tmp_path):
+    data = {
+        "providers": {"a": {"base_url": "https://a.example/v1", "api_key_env": ["KA"]},
+                      "b": {"base_url": "https://b.example/v1", "api_key_env": ["KB"]}},
+        "seats": [{"seat_id": "s", "seat": "S", "role": "r", "provider": "a",
+                   "model": "literal-id", "fallback": [{"provider": "b"}]}],
+        "quorum": {"required": 1},
+    }
+    path = tmp_path / "panel.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    seat = load_panel(path).seats[0]
+    assert seat.fallback_chain[0].model == ""              # omitted in the config
+    assert seat.model_ids_for("b", seat.fallback_chain[0].model) == ("literal-id",)
+
+
 def test_seat_file_name_is_fs_safe():
     seat = Seat("z-ai/glm-5.2", "GLM", "role", "p", "m")
     assert seat_file_name(seat) == "z-ai_glm-5.2.json"

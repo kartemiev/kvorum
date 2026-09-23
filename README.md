@@ -115,6 +115,55 @@ re-specialise a chair without touching a line of code:
 * **Fallback chain** — `fallback` also accepts a list, tried in order:
   `"fallback": [{"provider": "siliconflow", "model": "…"}, {"provider": "openrouter", "model": "…"}]`.
 
+### Per-provider model mapping & aliases
+
+A model id is **provider-specific**, so kvorum never assumes one name fits all:
+each fallback entry carries its own `model`, and the runner sends exactly that
+name to that provider.
+
+```jsonc
+{
+  "seat_id": "lead_auditor",
+  "seat": "DeepSeek-V4-Pro",
+  "role": "Lead Architecture Critic",
+  "provider": "siliconflow",
+  "model": "deepseek-ai/DeepSeek-V4",                    // name for the primary
+  "fallback": [
+    { "provider": "openrouter", "model": "deepseek/deepseek-v4" },
+    { "provider": "deepseek",   "model": "deepseek-chat" }   // Native API name
+  ]
+}
+```
+
+Resolution order for the id sent to a provider:
+
+1. the explicit `model` on that seat / fallback entry — always wins;
+2. the `model_aliases` entry for that provider (logical name → per-provider ids);
+3. the seat's own `model` — the documented default when a fallback omits `model`.
+
+`model_aliases` is the naming SSOT for seats that share a logical model, and it
+may list **several ids per provider**. The extras are tried in order when a
+provider reports the model as gone (HTTP 404 / "model not found"), so a
+provider-side rename costs one extra request instead of a lost seat:
+
+```jsonc
+"model_aliases": {
+  "glm-5.2": {
+    "siliconflow": ["zai-org/GLM-5.2", "zai-org/GLM-5.3"],
+    "openrouter":  ["z-ai/glm-5.2", "z-ai/glm-5.3"]
+  }
+}
+```
+
+A seat then simply declares `"model": "glm-5.2"` and every provider gets its own
+id. `kvorum verify-models` prints the resolved ids, whether the live catalogue
+still serves them, and which provider each fallback would use:
+
+```
+architect      siliconflow  zai-org/GLM-5.2, zai-org/GLM-5.3 (alias: glm-5.2) -> ok
+               fallback openrouter: z-ai/glm-5.2
+```
+
 `kvorum list-seats` prints the resolved panel (ids, roles, providers, key sources).
 
 ## Provider Flexibility
@@ -138,9 +187,18 @@ Two ready-made presets ship in `examples/` with the identical 6-model compositio
 > now"), OpenRouter runs into **RPM/TPM limits**, and slow reasoning models can
 > exceed the read timeout. With a fallback configured the seat automatically
 > moves to the secondary provider and the run survives — exactly what saved
-> GLM-5.2 in the benchmark below. **Disabling the fallback (`--no-fallback`) or
-> leaving the second API key unset means one provider hiccup costs you the whole
-> seat and can drop the run below quorum.**
+> GLM-5.2 in the benchmark below.
+>
+> Provider **model ids also drift**: the same model is `zai-org/GLM-5.2` on
+> SiliconFlow and `z-ai/glm-5.2` on OpenRouter, and either side can retire a name.
+> Give every fallback its own `model` and keep spare ids in `model_aliases` (see
+> *Per-provider model mapping & aliases*) — a provider-side rename then costs one
+> extra request instead of a lost seat. Longer chains work too:
+> SiliconFlow → OpenRouter → Native API.
+>
+> **Disabling the fallback (`--no-fallback`) or leaving the second API key unset
+> means one provider hiccup costs you the whole seat and can drop the run below
+> quorum.**
 
 Switch provider on any command with `--panel`:
 
@@ -190,7 +248,7 @@ whole point of the rate-limit protection above). Budget for it:
 | Command | Purpose |
 |---|---|
 | `kvorum list-seats` | seat availability + effective panel (no chat calls) |
-| `kvorum verify-models` | check every model id against the provider `/models` |
+| `kvorum verify-models` | per-provider resolution vs the live `/models` catalogues (free) |
 | `kvorum pack` | build the review packet (globs/manifest, `--max-chars`, `--ast-summary`) |
 | `kvorum dry-run` | write prompts to disk; **no API calls** |
 | `kvorum run` | real cross-review; archives the previous run; writes `run_meta.json` |

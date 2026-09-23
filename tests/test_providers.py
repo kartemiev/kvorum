@@ -6,7 +6,7 @@ import json
 
 import httpx
 
-from kvorum.panel import Fallback, Panel, ProviderConfig, Seat
+from kvorum.panel import Fallback, Panel, ProviderConfig, Seat, load_panel
 from kvorum.providers import call_seat
 
 from conftest import answer_text
@@ -126,4 +126,91 @@ def test_fallback_disabled():
                            lambda r: httpx.Response(500, text="boom")))
     assert result["text"] == ""
     assert len(result["attempts"]) == 1  # no fallback attempt
+
+
+def test_fallback_uses_provider_specific_model_name():
+    """The fallback is called with ITS OWN model name, never the primary's."""
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append((request.url.host, body["model"]))
+        if body["model"] == "primary-model":
+            return httpx.Response(500, text="provider outage")
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": answer_text()}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1}})
+
+    seat = Seat("s1", "Seat 1", "role", "primary", "primary-model",
+                fallback=[Fallback("backup", "backup-model")])
+    panel = Panel(providers=_providers(), seats=[seat], quorum_required=1)
+
+    result = call_seat(seat, panel, "prompt", _env(),
+                       transport=httpx.MockTransport(handler))
+
+    assert result["fallback_used"] is True
+    assert result["provider"] == "backup"
+    assert result["model"] == "backup-model"
+    assert seen == [("p.example", "primary-model"), ("b.example", "backup-model")]
+
+
+def test_fallback_inherits_parent_model_when_omitted():
+    """A fallback without an explicit `model` uses the seat's model (parent default)."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content)["model"])
+        if len(seen) == 1:
+            return httpx.Response(500, text="provider outage")
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": answer_text()}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1}})
+
+    seat = Seat("s1", "Seat 1", "role", "primary", "shared-model",
+                fallback=[Fallback("backup")])  # model omitted on purpose
+    panel = Panel(providers=_providers(), seats=[seat], quorum_required=1)
+
+    result = call_seat(seat, panel, "prompt", _env(),
+                       transport=httpx.MockTransport(handler))
+
+    assert result["provider"] == "backup"
+    assert seen == ["shared-model", "shared-model"]
+
+
+def test_model_missing_walks_alias_alternatives(tmp_path):
+    """If a provider retired the id, the next id from the alias is tried in place."""
+    data = {
+        "providers": {"primary": {"base_url": "https://p.example/v1",
+                                  "api_key_env": ["PRIMARY_KEY"]}},
+        "model_aliases": {"demo-model": {"primary": ["retired-id", "renamed-id"]}},
+        "seats": [{"seat_id": "s1", "seat": "S", "role": "r", "provider": "primary",
+                   "model": "demo-model"}],
+        "quorum": {"required": 1},
+    }
+    path = tmp_path / "panel.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    seat = load_panel(path).seats[0]
+    assert seat.model == "retired-id"
+
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        model = json.loads(request.content)["model"]
+        seen.append(model)
+        if model == "retired-id":
+            return httpx.Response(404, text='{"error": "model not found"}')
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": answer_text()}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1}})
+
+    panel = Panel(providers=_providers(), seats=[seat], quorum_required=1)
+    result = call_seat(seat, panel, "prompt", {"PRIMARY_KEY": "sk-x-12345678"},
+                       transport=httpx.MockTransport(handler))
+
+    assert seen == ["retired-id", "renamed-id"]
+    assert result["model"] == "renamed-id"
+    assert result["fallback_used"] is False       # stayed on the primary provider
+    assert len(result["attempts"]) == 2
+    assert result["attempts"][0]["model_index"] == 0
+    assert result["attempts"][1]["model_index"] == 1
 

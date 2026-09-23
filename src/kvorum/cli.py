@@ -93,9 +93,20 @@ def _resolve(provider, file_env):
 def cmd_verify_models(args: argparse.Namespace) -> int:
     settings = _settings(args)
     panel, file_env = _load(settings)
-    problems = verify_models(panel, file_env)
-    print(f"missing primary models: {problems}")
-    return 1 if problems else 0
+    report = verify_models(panel, file_env)
+    at_risk = 0
+    for row in report:
+        alias = f" (alias: {row['model_alias']})" if row["model_alias"] else ""
+        state = {True: "ok", False: "MISSING"}.get(row["present"], "unknown (no key)")
+        if row["present"] is False:
+            at_risk += 1
+        print(f"{row['seat_id']:14} {row['provider']:12} "
+              f"{', '.join(row['model_ids']):34}{alias} -> {state}")
+        for fb in row["fallbacks"]:
+            print(f"{'':14} {'':12} fallback {fb['provider']}: "
+                  f"{', '.join(fb['model_ids'])}")
+    print(f"\nseats whose primary provider serves none of the configured ids: {at_risk}")
+    return 1 if at_risk else 0
 
 
 def cmd_pack(args: argparse.Namespace) -> int:

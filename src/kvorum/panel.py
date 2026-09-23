@@ -61,12 +61,49 @@ class ProviderConfig:
         return f"{self.base_url.rstrip('/')}/models"
 
 
+#: Logical model → per-provider ids, ordered by preference. A seat may declare the
+#: logical name as its ``model`` and every provider gets its own id (the SSOT for
+#: model naming). Extra entries per provider are alternatives used when a provider
+#: retires or renames a model, e.g. ``"glm-5.2": {"siliconflow": ["zai-org/GLM-5.2",
+#: "zai-org/GLM-5.2-air"]}``. Panel files may extend/override this map.
+DEFAULT_MODEL_ALIASES: dict[str, dict[str, list[str]]] = {
+    "deepseek-v4-pro": {
+        "deepseek": ["deepseek-v4-pro"],
+        "openrouter": ["deepseek/deepseek-v4-pro"],
+    },
+    "glm-5.2": {
+        "siliconflow": ["zai-org/GLM-5.2"],
+        "openrouter": ["z-ai/glm-5.2"],
+    },
+    "kimi-k3": {
+        "siliconflow": ["moonshotai/Kimi-K3"],
+        "openrouter": ["moonshotai/kimi-k3"],
+    },
+    "qwen3.8-flash": {
+        "siliconflow": ["Qwen/Qwen3.8-2.4T-A95B"],
+        "openrouter": ["qwen/qwen3.8-flash"],
+    },
+    "longcat-2.0": {
+        "siliconflow": ["meituan-longcat/LongCat-2.0"],
+        "openrouter": ["meituan/longcat-2.0"],
+    },
+    "minimax-m3": {
+        "siliconflow": ["MiniMaxAI/MiniMax-M3"],
+        "openrouter": ["minimax/minimax-m3"],
+    },
+}
+
+
 @dataclass
 class Fallback:
-    """Secondary provider used only when the primary returns no visible text."""
+    """Secondary provider used only when the primary returns no visible text.
+
+    ``model`` may be omitted when the seat's model alias already declares an id
+    for that provider (per-provider naming).
+    """
 
     provider: str
-    model: str
+    model: str = ""
 
 
 @dataclass
@@ -94,6 +131,10 @@ class Seat:
     description: str = ""
     #: Per-seat activity flag; ``false`` keeps the seat configured but out of a run.
     enabled: bool = True
+    #: Alias the model was resolved from ("" when a literal id was given).
+    model_alias: str = ""
+    #: Alias table: provider → ordered model ids (from ``panel.model_aliases``).
+    model_table: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     @property
     def slug(self) -> str:
@@ -108,6 +149,20 @@ class Seat:
         if isinstance(self.fallback, Fallback):
             return (self.fallback,)
         return tuple(self.fallback)
+
+    def model_ids_for(self, provider: str, declared: str = "") -> tuple[str, ...]:
+        """Ordered model ids to try for ``provider`` (per-provider naming).
+
+        Precedence: an explicit per-provider ``declared`` id wins; then an alias
+        entry for that provider; then the seat's own :attr:`model` — the documented
+        inheritance default for a fallback that does not override ``model``.
+        """
+        if declared:
+            return (declared,)
+        table = self.model_table.get(provider)
+        if table:
+            return table
+        return (self.model,)
 
     @property
     def role_line(self) -> str:
@@ -143,6 +198,8 @@ class Panel:
     max_tokens_retry: int = 32768
     excluded_by_default: list[str] = field(default_factory=list)
     sections: Sections = field(default_factory=Sections)
+    #: Logical model name → ``{provider: (ids...)}`` (per-provider naming SSOT).
+    model_aliases: dict[str, dict[str, tuple[str, ...]]] = field(default_factory=dict)
 
     def provider(self, name: str) -> ProviderConfig:
         try:
@@ -154,13 +211,44 @@ class Panel:
 
     def seat_by_ref(self, ref: str) -> Seat | None:
         for seat in self.seats:
-            if ref in (seat.seat_id, seat.seat, seat.model):
+            if ref in (seat.seat_id, seat.seat, seat.model, seat.model_alias):
                 return seat
         return None
 
 
 def _slugify(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", value)
+
+
+def resolve_model_aliases(seat: Seat, aliases: dict[str, dict[str, tuple[str, ...]]]) -> Seat:
+    """Resolve a logical ``model`` alias into per-provider ids (in place).
+
+    A literal model id (no matching alias key) is left untouched, so existing
+    panels keep working. When the alias covers the primary provider, ``model`` is
+    rewritten to that provider's preferred id and :attr:`Seat.model_table` keeps
+    the full ordered list — the alternatives a provider can be re-tried with after
+    it retires or renames a model, and the ids fallbacks inherit per provider.
+    """
+    table = aliases.get(seat.model)
+    if not table:
+        return seat
+    seat.model_alias = seat.model
+    seat.model_table = {prov: tuple(ids) for prov, ids in table.items() if ids}
+    ids = seat.model_table.get(seat.provider)
+    if ids:
+        seat.model = ids[0]
+    return seat
+
+
+def normalize_aliases(raw: dict | None) -> dict[str, dict[str, tuple[str, ...]]]:
+    """Merge the built-in alias map with a panel's ``model_aliases`` block."""
+    merged: dict[str, dict[str, tuple[str, ...]]] = {
+        name: {prov: tuple(ids) for prov, ids in table.items()}
+        for name, table in DEFAULT_MODEL_ALIASES.items()
+    }
+    for name, table in (raw or {}).items():
+        merged[name] = {prov: tuple(ids) for prov, ids in table.items()}
+    return merged
 
 
 def seat_file_name(seat: Seat) -> str:
@@ -197,28 +285,30 @@ def default_panel() -> Panel:
              Fallback("openrouter", "deepseek/deepseek-v4-pro"),
              description="Hunts logic bugs, off-by-one errors and unhandled edge cases."),
         Seat("architect", "GLM-5.2", "Lead Architecture Critic",
-             "siliconflow", "zai-org/GLM-5.2", "core", 65536,
+             "siliconflow", "glm-5.2", "core", 65536,
              Fallback("openrouter", "z-ai/glm-5.2"),
              extra_body={"chat_template_kwargs": {"enable_thinking": False}},
              description="Layering, dependency direction and structural regressions."),
         Seat("long-context", "Kimi-K3", "Long-Context Analyst",
-             "siliconflow", "moonshotai/Kimi-K3", "core", 40000,
+             "siliconflow", "kimi-k3", "core", 40000,
              Fallback("openrouter", "moonshotai/kimi-k3"),
              description="Cross-file inconsistencies and API-limit risks over the whole artifact."),
         Seat("code-expert", "Qwen3.8-Flash", "Code Expert & Refactoring",
-             "siliconflow", "Qwen/Qwen3.8-2.4T-A95B", "core", 20000,
+             "siliconflow", "qwen3.8-flash", "core", 20000,
              Fallback("openrouter", "qwen/qwen3.8-flash"),
              description="Code quality, duplication and refactoring opportunities.",
              enabled=False),
         Seat("reliability", "LongCat-2.0", "Workflows & Reliability",
-             "siliconflow", "meituan-longcat/LongCat-2.0", "panel", 20000,
+             "siliconflow", "longcat-2.0", "panel", 20000,
              Fallback("openrouter", "meituan/longcat-2.0"),
              description="Pipelines, retries, idempotency and failure modes."),
         Seat("security", "MiniMax-M3", "Security & Vulnerability Audit",
-             "siliconflow", "MiniMaxAI/MiniMax-M3", "panel", 20000,
+             "siliconflow", "minimax-m3", "panel", 20000,
              Fallback("openrouter", "minimax/minimax-m3"),
              description="Auth/tenant scoping, secret handling, injection and abuse paths."),
     ]
+    aliases = normalize_aliases(None)
+    seats = [resolve_model_aliases(seat, aliases) for seat in seats]
     return Panel(
         providers=providers,
         seats=seats,
@@ -228,6 +318,7 @@ def default_panel() -> Panel:
         fallback_timeout_s=300.0,
         max_tokens_retry=32768,
         excluded_by_default=["code-expert"],
+        model_aliases=aliases,
     )
 
 
@@ -241,12 +332,17 @@ def _provider_from_cfg(name: str, cfg: dict) -> ProviderConfig:
 
 
 def _fallback_from_raw(raw) -> Fallback | tuple[Fallback, ...] | None:
-    """Accept a single fallback object or a list of them (a fallback chain)."""
+    """Accept a single fallback object or a list of them (a fallback chain).
+
+    ``model`` is optional per entry: when omitted, the seat's own ``model`` is
+    used — or the model alias entry for that provider, which is the preferred way
+    to give each provider its own model name.
+    """
     if raw is None:
         return None
     if isinstance(raw, dict):
-        return Fallback(raw["provider"], raw["model"])
-    items = tuple(Fallback(item["provider"], item["model"]) for item in raw)
+        return Fallback(raw["provider"], raw.get("model", ""))
+    items = tuple(Fallback(item["provider"], item.get("model", "")) for item in raw)
     return items or None
 
 
@@ -255,11 +351,12 @@ def _panel_from_dict(data: dict, inherit: dict[str, ProviderConfig] | None = Non
     for name, cfg in (data.get("providers") or {}).items():
         providers[name] = _provider_from_cfg(name, cfg)
 
+    aliases = normalize_aliases(data.get("model_aliases"))
     seats: list[Seat] = []
     for raw in data.get("seats") or []:
         seat_id = (raw.get("seat_id") or raw.get("slug") or raw.get("id")
                    or raw["model"])
-        seats.append(Seat(
+        seats.append(resolve_model_aliases(Seat(
             seat_id=seat_id,
             seat=raw.get("seat") or raw.get("name") or seat_id,
             role=raw.get("role", ""),
@@ -272,7 +369,7 @@ def _panel_from_dict(data: dict, inherit: dict[str, ProviderConfig] | None = Non
             description=raw.get("description", ""),
             enabled=(bool(raw.get("enabled", True))
                      and not bool(raw.get("excluded_by_default", False))),
-        ))
+        ), aliases))
 
     quorum = data.get("quorum") or {}
     timeouts = data.get("timeouts") or {}
@@ -291,6 +388,7 @@ def _panel_from_dict(data: dict, inherit: dict[str, ProviderConfig] | None = Non
             required=tuple(sections_cfg.get("required") or defaults.required),
             resume=tuple(sections_cfg.get("resume") or defaults.resume),
         ),
+        model_aliases=aliases,
     )
 
 
@@ -331,6 +429,7 @@ def _panel_from_council(data: dict) -> Panel:
         timeout_s=float(data.get("model_timeout_s", 300.0)),
         fallback_timeout_s=float(data.get("model_timeout_s", 300.0)),
         excluded_by_default=list(data.get("excluded_by_default") or []),
+        model_aliases=normalize_aliases(None),
     )
 
 

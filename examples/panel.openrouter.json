@@ -13,6 +13,32 @@
       "api_key_env": ["DEEPSEEK_API_KEY"]
     }
   },
+  "model_aliases": {
+    "deepseek-v4-pro": {
+      "openrouter": ["deepseek/deepseek-v4-pro", "deepseek/deepseek-chat"],
+      "deepseek": ["deepseek-v4-pro", "deepseek-chat"]
+    },
+    "glm-5.2": {
+      "openrouter": ["z-ai/glm-5.2", "z-ai/glm-5.3"],
+      "siliconflow": ["zai-org/GLM-5.2", "zai-org/GLM-5.3"]
+    },
+    "kimi-k3": {
+      "openrouter": ["moonshotai/kimi-k3"],
+      "siliconflow": ["moonshotai/Kimi-K3"]
+    },
+    "qwen3.8-flash": {
+      "openrouter": ["qwen/qwen3.8-flash"],
+      "siliconflow": ["Qwen/Qwen3.8-2.4T-A95B"]
+    },
+    "longcat-2.0": {
+      "openrouter": ["meituan/longcat-2.0"],
+      "siliconflow": ["meituan-longcat/LongCat-2.0"]
+    },
+    "minimax-m3": {
+      "openrouter": ["minimax/minimax-m3"],
+      "siliconflow": ["MiniMaxAI/MiniMax-M3"]
+    }
+  },
   "seats": [
     {
       "seat_id": "logic",
@@ -23,7 +49,9 @@
       "model": "deepseek/deepseek-v4-pro",
       "tier": "core",
       "max_tokens": 20000,
-      "fallback": { "provider": "deepseek", "model": "deepseek-v4-pro" }
+      "fallback": [
+        { "provider": "deepseek", "model": "deepseek-v4-pro" }
+      ]
     },
     {
       "seat_id": "architect",
@@ -34,8 +62,10 @@
       "model": "z-ai/glm-5.2",
       "tier": "core",
       "max_tokens": 65536,
-      "fallback": { "provider": "siliconflow", "model": "zai-org/GLM-5.2" },
-      "extra_body": { "chat_template_kwargs": { "enable_thinking": false } }
+      "extra_body": { "chat_template_kwargs": { "enable_thinking": false } },
+      "fallback": [
+        { "provider": "siliconflow", "model": "zai-org/GLM-5.2" }
+      ]
     },
     {
       "seat_id": "long-context",
@@ -46,7 +76,9 @@
       "model": "moonshotai/kimi-k3",
       "tier": "core",
       "max_tokens": 40000,
-      "fallback": { "provider": "siliconflow", "model": "moonshotai/Kimi-K3" }
+      "fallback": [
+        { "provider": "siliconflow", "model": "moonshotai/Kimi-K3" }
+      ]
     },
     {
       "seat_id": "code-expert",
@@ -58,7 +90,9 @@
       "tier": "core",
       "max_tokens": 20000,
       "enabled": false,
-      "fallback": { "provider": "siliconflow", "model": "Qwen/Qwen3.8-2.4T-A95B" }
+      "fallback": [
+        { "provider": "siliconflow", "model": "Qwen/Qwen3.8-2.4T-A95B" }
+      ]
     },
     {
       "seat_id": "reliability",
@@ -69,7 +103,9 @@
       "model": "meituan/longcat-2.0",
       "tier": "panel",
       "max_tokens": 20000,
-      "fallback": { "provider": "siliconflow", "model": "meituan-longcat/LongCat-2.0" }
+      "fallback": [
+        { "provider": "siliconflow", "model": "meituan-longcat/LongCat-2.0" }
+      ]
     },
     {
       "seat_id": "security",
@@ -80,7 +116,9 @@
       "model": "minimax/minimax-m3",
       "tier": "panel",
       "max_tokens": 20000,
-      "fallback": { "provider": "siliconflow", "model": "MiniMaxAI/MiniMax-M3" }
+      "fallback": [
+        { "provider": "siliconflow", "model": "MiniMaxAI/MiniMax-M3" }
+      ]
     }
   ],
   "quorum": { "required": 3, "fail_closed": true },

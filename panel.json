@@ -13,6 +13,32 @@
       "api_key_env": ["OPENROUTER_API_KEY"]
     }
   },
+  "model_aliases": {
+    "deepseek-v4-pro": {
+      "deepseek": ["deepseek-v4-pro", "deepseek-chat"],
+      "openrouter": ["deepseek/deepseek-v4-pro", "deepseek/deepseek-chat"]
+    },
+    "glm-5.2": {
+      "siliconflow": ["zai-org/GLM-5.2", "zai-org/GLM-5.3"],
+      "openrouter": ["z-ai/glm-5.2", "z-ai/glm-5.3"]
+    },
+    "kimi-k3": {
+      "siliconflow": ["moonshotai/Kimi-K3"],
+      "openrouter": ["moonshotai/kimi-k3"]
+    },
+    "qwen3.8-flash": {
+      "siliconflow": ["Qwen/Qwen3.8-2.4T-A95B"],
+      "openrouter": ["qwen/qwen3.8-flash"]
+    },
+    "longcat-2.0": {
+      "siliconflow": ["meituan-longcat/LongCat-2.0"],
+      "openrouter": ["meituan/longcat-2.0"]
+    },
+    "minimax-m3": {
+      "siliconflow": ["MiniMaxAI/MiniMax-M3"],
+      "openrouter": ["minimax/minimax-m3"]
+    }
+  },
   "seats": [
     {
       "seat_id": "logic",
@@ -23,7 +49,9 @@
       "model": "deepseek-v4-pro",
       "tier": "core",
       "max_tokens": 20000,
-      "fallback": { "provider": "openrouter", "model": "deepseek/deepseek-v4-pro" }
+      "fallback": [
+        { "provider": "openrouter", "model": "deepseek/deepseek-v4-pro" }
+      ]
     },
     {
       "seat_id": "architect",
@@ -31,11 +59,13 @@
       "role": "Lead Architecture Critic",
       "description": "Layering, dependency direction and structural regressions.",
       "provider": "siliconflow",
-      "model": "zai-org/GLM-5.2",
+      "model": "glm-5.2",
       "tier": "core",
       "max_tokens": 65536,
-      "fallback": { "provider": "openrouter", "model": "z-ai/glm-5.2" },
-      "extra_body": { "chat_template_kwargs": { "enable_thinking": false } }
+      "extra_body": { "chat_template_kwargs": { "enable_thinking": false } },
+      "fallback": [
+        { "provider": "openrouter", "model": "z-ai/glm-5.2" }
+      ]
     },
     {
       "seat_id": "long-context",
@@ -43,10 +73,12 @@
       "role": "Long-Context Analyst",
       "description": "Cross-file inconsistencies and API-limit risks over the whole artifact.",
       "provider": "siliconflow",
-      "model": "moonshotai/Kimi-K3",
+      "model": "kimi-k3",
       "tier": "core",
       "max_tokens": 40000,
-      "fallback": { "provider": "openrouter", "model": "moonshotai/kimi-k3" }
+      "fallback": [
+        { "provider": "openrouter", "model": "moonshotai/kimi-k3" }
+      ]
     },
     {
       "seat_id": "code-expert",
@@ -54,11 +86,13 @@
       "role": "Code Expert & Refactoring",
       "description": "Code quality, duplication and refactoring opportunities.",
       "provider": "siliconflow",
-      "model": "Qwen/Qwen3.8-2.4T-A95B",
+      "model": "qwen3.8-flash",
       "tier": "core",
       "max_tokens": 20000,
       "enabled": false,
-      "fallback": { "provider": "openrouter", "model": "qwen/qwen3.8-flash" }
+      "fallback": [
+        { "provider": "openrouter", "model": "qwen/qwen3.8-flash" }
+      ]
     },
     {
       "seat_id": "reliability",
@@ -66,10 +100,12 @@
       "role": "Workflows & Reliability",
       "description": "Pipelines, retries, idempotency and failure modes.",
       "provider": "siliconflow",
-      "model": "meituan-longcat/LongCat-2.0",
+      "model": "longcat-2.0",
       "tier": "panel",
       "max_tokens": 20000,
-      "fallback": { "provider": "openrouter", "model": "meituan/longcat-2.0" }
+      "fallback": [
+        { "provider": "openrouter", "model": "meituan/longcat-2.0" }
+      ]
     },
     {
       "seat_id": "security",
@@ -77,10 +113,12 @@
       "role": "Security & Vulnerability Audit",
       "description": "Auth/tenant scoping, secret handling, injection and abuse paths.",
       "provider": "siliconflow",
-      "model": "MiniMaxAI/MiniMax-M3",
+      "model": "minimax-m3",
       "tier": "panel",
       "max_tokens": 20000,
-      "fallback": { "provider": "openrouter", "model": "minimax/minimax-m3" }
+      "fallback": [
+        { "provider": "openrouter", "model": "minimax/minimax-m3" }
+      ]
     }
   ],
   "quorum": { "required": 3, "fail_closed": true },
@@ -96,4 +134,3 @@
     "resume": ["## Blind spots and action plan"]
   }
 }
-
