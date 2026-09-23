@@ -1,0 +1,98 @@
+{
+  "providers": {
+    "openrouter": {
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key_env": ["OPENROUTER_API_KEY"]
+    },
+    "siliconflow": {
+      "base_url": "https://api.siliconflow.com/v1",
+      "api_key_env": ["SILICONFLOW_API_KEY", "SILICONFLOW_KEY"]
+    },
+    "deepseek": {
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key_env": ["DEEPSEEK_API_KEY"]
+    }
+  },
+  "seats": [
+    {
+      "seat_id": "logic",
+      "seat": "DeepSeek-V4-Pro",
+      "role": "Logic & Edge Case Auditor",
+      "description": "Hunts logic bugs, off-by-one errors and unhandled edge cases.",
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-pro",
+      "tier": "core",
+      "max_tokens": 20000,
+      "fallback": { "provider": "deepseek", "model": "deepseek-v4-pro" }
+    },
+    {
+      "seat_id": "architect",
+      "seat": "GLM-5.2",
+      "role": "Lead Architecture Critic",
+      "description": "Layering, dependency direction and structural regressions.",
+      "provider": "openrouter",
+      "model": "z-ai/glm-5.2",
+      "tier": "core",
+      "max_tokens": 65536,
+      "fallback": { "provider": "siliconflow", "model": "zai-org/GLM-5.2" },
+      "extra_body": { "chat_template_kwargs": { "enable_thinking": false } }
+    },
+    {
+      "seat_id": "long-context",
+      "seat": "Kimi-K3",
+      "role": "Long-Context Analyst",
+      "description": "Cross-file inconsistencies and API-limit risks over the whole artifact.",
+      "provider": "openrouter",
+      "model": "moonshotai/kimi-k3",
+      "tier": "core",
+      "max_tokens": 40000,
+      "fallback": { "provider": "siliconflow", "model": "moonshotai/Kimi-K3" }
+    },
+    {
+      "seat_id": "code-expert",
+      "seat": "Qwen3.8-Flash",
+      "role": "Code Expert & Refactoring",
+      "description": "Code quality, duplication and refactoring opportunities.",
+      "provider": "openrouter",
+      "model": "qwen/qwen3.8-flash",
+      "tier": "core",
+      "max_tokens": 20000,
+      "enabled": false,
+      "fallback": { "provider": "siliconflow", "model": "Qwen/Qwen3.8-2.4T-A95B" }
+    },
+    {
+      "seat_id": "reliability",
+      "seat": "LongCat-2.0",
+      "role": "Workflows & Reliability",
+      "description": "Pipelines, retries, idempotency and failure modes.",
+      "provider": "openrouter",
+      "model": "meituan/longcat-2.0",
+      "tier": "panel",
+      "max_tokens": 20000,
+      "fallback": { "provider": "siliconflow", "model": "meituan-longcat/LongCat-2.0" }
+    },
+    {
+      "seat_id": "security",
+      "seat": "MiniMax-M3",
+      "role": "Security & Vulnerability Audit",
+      "description": "Auth/tenant scoping, secret handling, injection and abuse paths.",
+      "provider": "openrouter",
+      "model": "minimax/minimax-m3",
+      "tier": "panel",
+      "max_tokens": 20000,
+      "fallback": { "provider": "siliconflow", "model": "MiniMaxAI/MiniMax-M3" }
+    }
+  ],
+  "quorum": { "required": 3, "fail_closed": true },
+  "timeouts": { "primary_s": 600, "fallback_s": 300, "max_tokens_retry": 32768 },
+  "excluded_by_default": ["code-expert"],
+  "sections": {
+    "required": [
+      "## Verdict",
+      "## Critical findings",
+      "## Major findings",
+      "## Blind spots and action plan"
+    ],
+    "resume": ["## Blind spots and action plan"]
+  }
+}

@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Environments & secrets
+.venv/
+.env
+
+# Runtime artifacts & reports
+runs/
+runs.*/
+artifacts/
+reports/
+*.log
+run_meta*.json
+packet.md
+verdict.md
+verdict.json
+.pytest_cache/
+

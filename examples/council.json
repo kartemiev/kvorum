@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-09-19T18:08:24+00:00",
+  "source": "snapshot of a legacy MODEL_REGISTRY (imported by `kvorum --panel council.json`)",
+  "default_order": [
+    "deepseek/deepseek-v4-pro",
+    "qwen/qwen3.8-flash",
+    "moonshotai/kimi-k3",
+    "z-ai/glm-5.3",
+    "meituan/longcat-2.0"
+  ],
+  "bundle_core_models": [
+    "deepseek/deepseek-v4-pro",
+    "qwen/qwen3.8-flash",
+    "moonshotai/kimi-k3",
+    "meituan/longcat-2.0",
+    "z-ai/glm-5.2"
+  ],
+  "quorum": { "core_required": 3, "core_total": 5, "fail_closed": true },
+  "excluded_by_default": [],
+  "model_timeout_s": 300,
+  "models": [
+    { "slug": "deepseek/deepseek-v4-pro", "role": "Logic / Bug-Hunter",
+      "context_window": 1048576, "price_input_usd_1m": 1.12,
+      "price_output_usd_1m": 3.35, "max_output_tokens": 16384,
+      "bundles": true, "tier": "core" },
+    { "slug": "z-ai/glm-5.2", "role": "System Architect",
+      "context_window": 1048576, "price_input_usd_1m": 0.97,
+      "price_output_usd_1m": 3.04, "max_output_tokens": 16384,
+      "bundles": true, "tier": "core" },
+    { "slug": "moonshotai/kimi-k3", "role": "API Limits / Long-Context",
+      "context_window": 1048576, "price_input_usd_1m": 3.0,
+      "price_output_usd_1m": 15.0, "max_output_tokens": 32768,
+      "bundles": true, "tier": "core" },
+    { "slug": "qwen/qwen3.8-flash", "role": "Grand Arbiter / Code Expert",
+      "context_window": 1000000, "price_input_usd_1m": 0.15,
+      "price_output_usd_1m": 0.47, "max_output_tokens": 16384,
+      "bundles": true, "tier": "core" },
+    { "slug": "minimax/minimax-m3", "role": "Long-Context Reviewer / Cross-Check",
+      "context_window": 1048576, "price_input_usd_1m": 0.3,
+      "price_output_usd_1m": 1.2, "max_output_tokens": 16384,
+      "bundles": true, "tier": "panel" },
+    { "slug": "meituan/longcat-2.0", "role": "Agentic Workflows & Pipelines",
+      "context_window": 1048756, "price_input_usd_1m": 0.0,
+      "price_output_usd_1m": 0.0, "max_output_tokens": 16384,
+      "bundles": true, "tier": "core" },
+    { "slug": "z-ai/glm-5.3", "role": "System Architect / DB",
+      "context_window": 1310720, "price_input_usd_1m": 1.09,
+      "price_output_usd_1m": 3.43, "max_output_tokens": 32768,
+      "bundles": true, "tier": "panel" }
+  ]
+}
