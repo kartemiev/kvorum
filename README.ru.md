@@ -110,8 +110,8 @@ DeepSeek, SiliconFlow) и локальные серверы (Ollama, vLLM, LiteL
 
 Каждое кресло — это самостоятельный слот в `panel.json`: добавляйте, удаляйте или
 переспециализируйте его без правки кода. Полный справочник полей (включая `role`,
-`description`, `enabled`, цепочки фолбэков, `extra_body`, `base_url` и
-провайдерные `model_aliases`) — в
+`description`, `enabled`, цепочки фолбэков, `extra_body`, `base_url`,
+`max_context_tokens` и провайдерные `model_aliases`) — в
 **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**; главное:
 
 ```jsonc
@@ -124,6 +124,7 @@ DeepSeek, SiliconFlow) и локальные серверы (Ollama, vLLM, LiteL
   "model": "minimax-m3",                       // logical name or literal id (see aliases)
   "tier": "panel",
   "max_tokens": 20000,
+  "max_context_tokens": 128000,             // optional context budget (input tokens)
   "enabled": true,
   "fallback": [ { "provider": "openrouter", "model": "minimax/minimax-m3" } ]
 }
@@ -148,6 +149,12 @@ examples/panel.openrouter.json`) — без правки кода.
 > могут превысить таймаут чтения; настроенный фолбэк переводит кресло на вторичного
 > провайдера вместо его потери. Незаданный второй ключ или `--no-fallback` означают,
 > что одна заминка провайдера уронит запуск ниже кворума.
+
+> **Примечание:** Прямые ключи от SiliconFlow или DeepSeek Native **не являются
+> обязательными**. Вы можете запустить полноценный ансамбль из всех 6 моделей,
+> используя **только один единый API-ключ OpenRouter** (`OPENROUTER_API_KEY`).
+> Использование прямых эндпоинтов — это лишь опция для снижения латентности или
+> экономии на региональных тарифах.
 
 Эндпоинты — тоже данные: кресло/фолбэк может переопределить `base_url` (шлюз vLLM /
 Ollama / LiteLLM), а переменная `<NAME>_BASE_URL` переопределяет провайдера целиком.
@@ -185,17 +192,17 @@ kvorum run --notify          # --notify is implied once either variable is set
 | `kvorum list-seats` | доступность кресел + эффективная панель (без вызовов чата) | — |
 | `kvorum verify-models` | разрешение моделей по провайдерам против живых `/models` (бесплатно) | — |
 | `kvorum pack` | собрать пакет ревью | `--include` `--exclude` `--manifest` `--max-chars` `--ast-summary` `--out` |
-| `kvorum dry-run` | записать промпты на диск; **без вызовов API** | `--seats` `--include-excluded` `--resume` |
-| `kvorum run` | реальное кросс-ревью; архивирует предыдущий запуск | `--seats` `--skip-seats` `--include-excluded` `--no-fallback` `--soft-quorum` `--no-archive` `--timeout` `--fallback-timeout` `--min-delay-s` `--notify` |
+| `kvorum dry-run` | записать промпты на диск; **без вызовов API** | `--seats` `--include-excluded` `--resume` `--preflight` `--skip-overflow` |
+| `kvorum run` | реальное кросс-ревью; архивирует предыдущий запуск | `--seats` `--skip-seats` `--include-excluded` `--no-fallback` `--soft-quorum` `--no-archive` `--timeout` `--fallback-timeout` `--min-delay-s` `--notify` `--preflight` `--skip-overflow` |
 | `kvorum resume` | продолжить ответы, обрезанные по `max_tokens` | те же флаги, что у `run` |
 | `kvorum verdict` | собрать `verdict.md` + `verdict.json` | `--verdict` `--verdict-json` |
 
 Общие флаги (для всех подкоманд): `--panel`, `--packet`, `--rules`, `--runs-dir`,
 `--env-file`. `--seats` и `--only-seats` — синонимы.
 
-Коды выхода: `0` кворум достигнут · `1` fail-closed (кворум не достигнут) · `2`
-ошибка использования/конфигурации (нет пакета, неизвестная ссылка на кресло,
-битая панель).
+Коды выхода: `0` кворум достигнут · `1` fail-closed (кворум не достигнут) или
+pre-flight `OVERFLOW` · `2` ошибка использования/конфигурации (нет пакета,
+неизвестная ссылка на кресло, битая панель).
 
 ### Точечные перезапуски (дешёвые доработки)
 
@@ -237,6 +244,38 @@ kvorum verdict                              # rebuild the verdict from the merge
 (stdlib `ast`, только Python) поверх встроенных исходников — тела по-прежнему
 вставляются, пока не достигнут `--max-chars`, так что это навигационный помощник, а
 не переключатель, заменяющий тела.
+
+## Pre-flight проверка
+
+`--preflight` (для `run` / `dry-run`) измеряет размер собранного пакета
+(`packet.md`, включая AST-сводку) и сравнивает его с лимитом контекста каждого
+кресла **до любого вызова API** — так что слишком длинный пакет отлавливается до
+того, как он сожжёт деньги или упадёт посреди прогона:
+
+* Размер пакета оценивается как `len(text) // 4` токенов (то же правило
+  `символы / 4`, что и в бенчмарке выше) плюс его размер в UTF-8 байтах.
+* Бюджет каждого кресла — это `max_context_tokens`, если он задан, иначе
+  встроенная таблица по моделям (`deepseek-v4-pro` / `qwen3.8-flash` 128 k,
+  `kimi-k3` / `minimax-m3` 256 k, `glm-5.2` / `longcat-2.0` 1 M; всё неизвестное
+  откатывается к 1 M).
+
+```bash
+kvorum run --preflight                 # напечатать таблицу, затем запустить (или блокировать)
+kvorum run --preflight --skip-overflow # отбросить OVERFLOW-кресла, запустить остальные
+```
+
+| Кресло | Модель | Лимит (токены) | Размер пакета | Статус |
+|---|---|---|---|---|
+| DeepSeek-V4-Pro | `deepseek-v4-pro` | 128,000 | 39,000 | FIT |
+| … | … | … | … | … |
+
+**Fail-closed по умолчанию:** если хоть одно кресло получает `OVERFLOW`,
+`--preflight` завершается с кодом `1`, и ни один вызов API не делается.
+**`--skip-overflow`** отбрасывает переполненные кресла и пересчитывает кворум от
+оставшихся (например, 4 из 6); если валидных кресел осталось меньше
+`quorum.required`, прогон блокируется с ошибкой `INSUFFICIENT_SEATS`.
+
+> **Note:** Если контекст проекта превышает лимиты большинства моделей, воспользуйтесь `--ast-summary` для сжатия AST или `--skip-overflow`. (И да — если отдельная подсистема не помещается в 4 МБ контекста, возможно, вопрос не только к провайдерам, но и к архитектуре этой подсистемы 😉).
 
 ## Артефакты
 

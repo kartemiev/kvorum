@@ -55,6 +55,7 @@ A seat is a fully-described chair. Full field reference:
 | `model` | string | — | logical alias or literal model id for the primary |
 | `tier` | string | `core` | free-form grouping (informational) |
 | `max_tokens` | int | `20000` | per-call output budget |
+| `max_context_tokens` | int | built-in table | context-window budget (input tokens) for `--preflight`; an explicit value wins over the built-in defaults |
 | `fallback` | object/array | none | secondary provider(s), tried in order |
 | `base_url` | string | `""` | endpoint override for this seat |
 | `extra_body` | object | `{}` | merged into the chat-completions payload |
@@ -121,6 +122,20 @@ Resolution order for the id actually sent to a provider:
   retried once with this budget.
 * `sections.required` — headings a full answer must contain; `sections.resume` —
   headings a continuation (`kvorum resume`) must produce.
+
+## Pre-flight check (`--preflight` / `--skip-overflow`)
+
+`--preflight` (on `run` / `dry-run`) compares the assembled packet against each
+seat's context budget before any API call:
+
+* The packet size is estimated as `len(text) // 4` tokens (plus its UTF-8 bytes).
+* A seat's budget is its `max_context_tokens` when set, otherwise a built-in
+  per-model table: `deepseek-v4-pro` / `qwen3.8-flash` → 128 k, `kimi-k3` /
+  `minimax-m3` → 256 k, `glm-5.2` / `longcat-2.0` → 1 M; unknown models → 1 M.
+
+Any `OVERFLOW` blocks the run (exit 1) by default. `--skip-overflow` drops the
+overflowing seats and recomputes the quorum from the survivors; if fewer than
+`quorum.required` remain, the run blocks with `INSUFFICIENT_SEATS`.
 
 ## Legacy `council.json`
 

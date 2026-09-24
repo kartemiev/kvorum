@@ -108,6 +108,22 @@ DEFAULT_MODEL_ALIASES: dict[str, dict[str, list[str]]] = {
     },
 }
 
+#: Built-in context-window budgets (input tokens) per logical model name.
+#: A seat's explicit ``max_context_tokens`` always overrides these. Keys are
+#: matched case-insensitively on the bare model slug, so provider-prefixed ids
+#: (``z-ai/glm-5.2``) resolve to the same entry as the logical alias (``glm-5.2``).
+DEFAULT_CONTEXT_LIMITS: dict[str, int] = {
+    "deepseek-v4-pro": 128_000,
+    "glm-5.2": 1_000_000,
+    "kimi-k3": 256_000,
+    "qwen3.8-flash": 128_000,
+    "longcat-2.0": 1_000_000,
+    "minimax-m3": 256_000,
+}
+
+#: Fallback when a model has no explicit override and no table entry.
+GLOBAL_CONTEXT_LIMIT = 1_000_000
+
 
 @dataclass
 class Fallback:
@@ -154,6 +170,9 @@ class Seat:
     model_alias: str = ""
     #: Alias table: provider → ordered model ids (from ``panel.model_aliases``).
     model_table: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    #: Explicit context-window budget (input tokens) for pre-flight checks.
+    #: ``None`` falls back to :data:`DEFAULT_CONTEXT_LIMITS` (or the global limit).
+    max_context_tokens: int | None = None
 
     @property
     def slug(self) -> str:
@@ -274,6 +293,23 @@ def seat_file_name(seat: Seat) -> str:
     return f"{_slugify(seat.seat_id)}.json"
 
 
+def seat_context_limit(seat: Seat) -> int:
+    """Context budget (input tokens) for a seat.
+
+    Precedence: explicit ``seat.max_context_tokens`` → the per-model entry in
+    :data:`DEFAULT_CONTEXT_LIMITS` (matched on the alias or the bare slug of the
+    provider id) → :data:`GLOBAL_CONTEXT_LIMIT`.
+    """
+    if seat.max_context_tokens is not None:
+        return seat.max_context_tokens
+    for key in (seat.model_alias, seat.model):
+        if key:
+            bare = key.rsplit("/", 1)[-1].lower()
+            if bare in DEFAULT_CONTEXT_LIMITS:
+                return DEFAULT_CONTEXT_LIMITS[bare]
+    return GLOBAL_CONTEXT_LIMIT
+
+
 def resolve_seat_refs(panel: Panel, refs: list[str]) -> tuple[list[Seat], list[str]]:
     """Resolve ``--seats`` refs to seats, reporting refs that matched nothing.
 
@@ -384,6 +420,9 @@ def _panel_from_dict(data: dict, inherit: dict[str, ProviderConfig] | None = Non
             model=raw["model"],
             tier=raw.get("tier", "core"),
             max_tokens=int(raw.get("max_tokens", 20000)),
+            max_context_tokens=(int(raw["max_context_tokens"])
+                                if raw.get("max_context_tokens") is not None
+                                else None),
             fallback=_fallback_from_raw(raw.get("fallback")),
             base_url=raw.get("base_url", ""),
             extra_body=dict(raw.get("extra_body") or {}),

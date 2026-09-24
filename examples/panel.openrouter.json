@@ -49,6 +49,7 @@
       "model": "deepseek/deepseek-v4-pro",
       "tier": "core",
       "max_tokens": 20000,
+      "max_context_tokens": 128000,
       "fallback": [
         { "provider": "deepseek", "model": "deepseek-v4-pro" }
       ]
@@ -62,6 +63,7 @@
       "model": "z-ai/glm-5.2",
       "tier": "core",
       "max_tokens": 65536,
+      "max_context_tokens": 1000000,
       "extra_body": { "chat_template_kwargs": { "enable_thinking": false } },
       "fallback": [
         { "provider": "siliconflow", "model": "zai-org/GLM-5.2" }
@@ -76,6 +78,7 @@
       "model": "moonshotai/kimi-k3",
       "tier": "core",
       "max_tokens": 40000,
+      "max_context_tokens": 256000,
       "fallback": [
         { "provider": "siliconflow", "model": "moonshotai/Kimi-K3" }
       ]
@@ -89,6 +92,7 @@
       "model": "qwen/qwen3.8-flash",
       "tier": "core",
       "max_tokens": 20000,
+      "max_context_tokens": 128000,
       "enabled": false,
       "fallback": [
         { "provider": "siliconflow", "model": "Qwen/Qwen3.8-2.4T-A95B" }
@@ -103,6 +107,7 @@
       "model": "meituan/longcat-2.0",
       "tier": "panel",
       "max_tokens": 20000,
+      "max_context_tokens": 1000000,
       "fallback": [
         { "provider": "siliconflow", "model": "meituan-longcat/LongCat-2.0" }
       ]
@@ -116,6 +121,7 @@
       "model": "minimax/minimax-m3",
       "tier": "panel",
       "max_tokens": 20000,
+      "max_context_tokens": 256000,
       "fallback": [
         { "provider": "siliconflow", "model": "MiniMaxAI/MiniMax-M3" }
       ]

@@ -107,8 +107,8 @@ See **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** for the complete
 
 Every seat is a self-contained slot in `panel.json` — add, remove or re-specialise
 a chair without touching code. The full field reference (including `role`,
-`description`, `enabled`, fallback chains, `extra_body`, `base_url` and
-per-provider `model_aliases`) lives in
+`description`, `enabled`, fallback chains, `extra_body`, `base_url`,
+`max_context_tokens` and per-provider `model_aliases`) lives in
 **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**; the essentials:
 
 ```jsonc
@@ -121,6 +121,7 @@ per-provider `model_aliases`) lives in
   "model": "minimax-m3",                       // logical name or literal id (see aliases)
   "tier": "panel",
   "max_tokens": 20000,
+  "max_context_tokens": 128000,             // optional context budget (input tokens)
   "enabled": true,
   "fallback": [ { "provider": "openrouter", "model": "minimax/minimax-m3" } ]
 }
@@ -144,6 +145,11 @@ examples/panel.openrouter.json`) — no code change.
 > read timeout; a configured fallback moves the seat to the secondary provider
 > instead of dropping it. Leaving the second key unset or `--no-fallback` means
 > one provider hiccup can drop the run below quorum.
+
+> **Note:** Direct SiliconFlow or DeepSeek Native keys are **not required**. You
+> can run the full 6-model ensemble with **just a single OpenRouter API key**
+> (`OPENROUTER_API_KEY`). Direct endpoints are only an option for lower latency
+> or regional pricing savings.
 
 Endpoints are also data: a seat/fallback can override `base_url` (a vLLM / Ollama /
 LiteLLM gateway), and a `<NAME>_BASE_URL` env var overrides a whole provider.
@@ -179,16 +185,17 @@ never fail the run.
 | `kvorum list-seats` | seat availability + effective panel (no chat calls) | — |
 | `kvorum verify-models` | per-provider model resolution vs live `/models` (free) | — |
 | `kvorum pack` | build the review packet | `--include` `--exclude` `--manifest` `--max-chars` `--ast-summary` `--out` |
-| `kvorum dry-run` | write prompts to disk; **no API calls** | `--seats` `--include-excluded` `--resume` |
-| `kvorum run` | real cross-review; archives the previous run | `--seats` `--skip-seats` `--include-excluded` `--no-fallback` `--soft-quorum` `--no-archive` `--timeout` `--fallback-timeout` `--min-delay-s` `--notify` |
+| `kvorum dry-run` | write prompts to disk; **no API calls** | `--seats` `--include-excluded` `--resume` `--preflight` `--skip-overflow` |
+| `kvorum run` | real cross-review; archives the previous run | `--seats` `--skip-seats` `--include-excluded` `--no-fallback` `--soft-quorum` `--no-archive` `--timeout` `--fallback-timeout` `--min-delay-s` `--notify` `--preflight` `--skip-overflow` |
 | `kvorum resume` | continue answers truncated by `max_tokens` | same flags as `run` |
 | `kvorum verdict` | assemble `verdict.md` + `verdict.json` | `--verdict` `--verdict-json` |
 
 Common flags (all subcommands): `--panel`, `--packet`, `--rules`, `--runs-dir`,
 `--env-file`. `--seats` and `--only-seats` are aliases.
 
-Exit codes: `0` quorum met · `1` fail-closed (quorum not met) · `2` usage /
-configuration error (missing packet, unknown seat reference, bad panel).
+Exit codes: `0` quorum met · `1` fail-closed (quorum not met) or pre-flight
+`OVERFLOW` · `2` usage / configuration error (missing packet, unknown seat
+reference, bad panel).
 
 ### Targeted re-runs (cheap offsets)
 
@@ -228,6 +235,40 @@ budget. `--ast-summary` **adds** a compact symbols/signatures/imports section
 (stdlib `ast`, Python-only) on top of the embedded sources — the bodies are still
 pasted until `--max-chars` is reached, so it is a navigation aid, not a
 body-replacement switch.
+
+## Pre-flight check
+
+`--preflight` (for `run` / `dry-run`) measures the assembled packet (`packet.md`,
+AST summary included) and compares it against each seat's context budget
+**before any API call**, so an over-long packet is caught before it burns money
+or fails mid-run:
+
+* Packet size is estimated as `len(text) // 4` tokens (the same `chars / 4` rule
+  as the benchmark above) plus its UTF-8 byte size.
+* Each seat's budget is `max_context_tokens` when set, otherwise a built-in
+  per-model table (`deepseek-v4-pro` / `qwen3.8-flash` 128 k, `kimi-k3` /
+  `minimax-m3` 256 k, `glm-5.2` / `longcat-2.0` 1 M; anything unknown falls back
+  to 1 M).
+
+```bash
+kvorum run --preflight                 # print the table, then run (or block)
+kvorum run --preflight --skip-overflow # drop OVERFLOW seats, run the rest
+```
+
+| Seat | Model | Limit (tokens) | Packet Size | Status |
+|---|---|---|---|---|
+| DeepSeek-V4-Pro | `deepseek-v4-pro` | 128,000 | 39,000 | FIT |
+| … | … | … | … | … |
+
+**Fail-closed by default:** if any seat reports `OVERFLOW`, `--preflight` exits
+`1` and no API call is made. **`--skip-overflow`** drops the overflowing seats
+and recomputes the quorum from the survivors (e.g. 4 of 6); if fewer seats remain
+than `quorum.required`, the run blocks with `INSUFFICIENT_SEATS`.
+
+> **Note:** If the project context exceeds most models' limits, use
+> `--ast-summary` to compress the AST, or `--skip-overflow`. (And yes — if a
+> single subsystem doesn't fit into 4 MB of context, the question may not only be
+> for the providers, but also for that subsystem's architecture 😉).
 
 ## Artifacts
 

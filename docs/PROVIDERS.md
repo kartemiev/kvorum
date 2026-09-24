@@ -5,6 +5,11 @@
 kvorum talks only to OpenAI-compatible `{base_url}/chat/completions` endpoints,
 so cloud hosts and local servers are configured identically.
 
+> **Note:** Direct SiliconFlow or DeepSeek Native keys are **not required**. You
+> can run the full 6-model ensemble with **just a single OpenRouter API key**
+> (`OPENROUTER_API_KEY`). Direct endpoints are only an option for lower latency
+> or regional pricing savings.
+
 ## Presets
 
 Two ready-made presets ship in `examples/` with the identical 6-seat composition:
@@ -107,5 +112,8 @@ Budget: a full 6-seat run takes ~20–25 minutes (1 300–1 500 s of model laten
 plus `--min-delay-s` pauses); a single seat can exceed **7 minutes**
 (DeepSeek-V4-Pro at 452.7 s here), so keep `--timeout` at **600 s** — a 300 s cap
 silently truncates such seats. Targeted re-runs (`kvorum run --seats <id>`) cost
-minutes instead of a full panel. Full token/cost breakdown: see the Dogfooding
-benchmark in [../README.md](../README.md).
+minutes instead of a full panel. Before any paid run, `kvorum run --preflight`
+checks the packet against each seat's context budget and blocks on overflow
+(`--skip-overflow` drops the overflowing seats and recomputes the quorum); see
+[../README.md](../README.md) for the table and limits. Full token/cost breakdown:
+see the Dogfooding benchmark in [../README.md](../README.md).

@@ -13,6 +13,7 @@ import httpx
 
 from .config import Settings
 from .panel import Panel, Seat, effective_seats, resolve_seat_refs, seat_file_name
+from .preflight import run_preflight
 from .prompts import build_prompt, build_resume_prompt
 from .notify import build_summary, notify_completion
 from .providers import call_seat
@@ -118,6 +119,8 @@ def run_panel(panel: Panel, settings: Settings, file_env: dict[str, str], *,
               exclude_env: str | None = None,
               min_delay_s: float = 0.0,
               notify: bool = False,
+              preflight: bool = False,
+              skip_overflow: bool = False,
               transport: httpx.BaseTransport | None = None) -> int:
     """Run the cross-review and return an exit code (0 quorum, 1 fail-closed, 2 error).
 
@@ -141,11 +144,6 @@ def run_panel(panel: Panel, settings: Settings, file_env: dict[str, str], *,
     if only and not matched_only:
         return 2
 
-    partial = bool(only) or bool(skip_seats) or resume
-    if archive and not partial:
-        archive_previous_run(settings.runs_dir)
-    settings.runs_dir.mkdir(parents=True, exist_ok=True)
-
     # Explicit ``--seats`` beats the default exclusion policy: if you name a
     # seat, you mean it. Without a subset the shipped policy applies.
     seats = (list(matched_only) if only
@@ -167,6 +165,22 @@ def run_panel(panel: Panel, settings: Settings, file_env: dict[str, str], *,
               else panel.quorum_required)
     fail_closed = (settings.fail_closed if settings.fail_closed is not None
                    else panel.fail_closed)
+
+    # Pre-flight runs before any filesystem mutation (and before any API call):
+    # a strict overflow blocks the run without archiving the previous one.
+    if preflight:
+        seats, blocker = run_preflight(seats, packet, quorum,
+                                       skip_overflow=skip_overflow)
+        if blocker is not None:
+            return blocker
+        if not seats:
+            print("[!] no seats to run after pre-flight", file=sys.stderr)
+            return 2
+
+    partial = bool(only) or bool(skip_seats) or resume
+    if archive and not partial:
+        archive_previous_run(settings.runs_dir)
+    settings.runs_dir.mkdir(parents=True, exist_ok=True)
 
     log = settings.runs_dir / "run.log"
     successes = 0

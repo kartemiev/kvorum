@@ -16,6 +16,7 @@ from .config import Settings, load_env_file
 from .context import build_packet
 from .notify import notify_enabled
 from .panel import load_panel, effective_seats, seat_file_name
+from .preflight import run_preflight
 from .prompts import build_prompt, build_resume_prompt
 from .providers import verify_models
 from .runner import load_inputs, previous_answer, run_panel
@@ -132,11 +133,20 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return 2
     panel, file_env = _load(settings)
-    prompt_dir = settings.runs_dir / "prompts"
-    prompt_dir.mkdir(parents=True, exist_ok=True)
     packet, rules = load_inputs(settings)
     seats = effective_seats(panel, _parse_seats(args.seats) or None,
                             args.include_excluded)
+
+    if args.preflight:
+        quorum = (settings.quorum_required if settings.quorum_required is not None
+                  else panel.quorum_required)
+        seats, blocker = run_preflight(seats, packet, quorum,
+                                       skip_overflow=args.skip_overflow)
+        if blocker is not None:
+            return blocker
+
+    prompt_dir = settings.runs_dir / "prompts"
+    prompt_dir.mkdir(parents=True, exist_ok=True)
     written = 0
     for seat in seats:
         if args.resume:
@@ -181,6 +191,8 @@ def _run_common(args: argparse.Namespace, resume: bool) -> int:
         exclude_env=os.environ.get("COUNCIL_EXCLUDE_MODELS"),
         min_delay_s=settings.min_delay_s,
         notify=notify_enabled(args.notify),
+        preflight=args.preflight,
+        skip_overflow=args.skip_overflow,
     )
 
 
@@ -261,6 +273,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--seats", "--only-seats", dest="seats", default="")
     p.add_argument("--include-excluded", action="store_true")
     p.add_argument("--resume", action="store_true")
+    p.add_argument("--preflight", action="store_true",
+                   help="check packet size against each seat's context limit")
+    p.add_argument("--skip-overflow", action="store_true",
+                   help="with --preflight: drop OVERFLOW seats instead of blocking")
     _common(p)
     p.set_defaults(func=cmd_dry_run)
 
@@ -285,6 +301,12 @@ def build_parser() -> argparse.ArgumentParser:
                        help="send a completion notification (ntfy/webhook); "
                             "auto-enabled when KVORUM_NTFY_TOPIC or "
                             "KVORUM_NOTIFY_WEBHOOK is set")
+        p.add_argument("--preflight", action="store_true",
+                       help="check packet size vs each seat's context limit before "
+                            "any API call (blocks on OVERFLOW)")
+        p.add_argument("--skip-overflow", action="store_true",
+                       help="with --preflight: drop OVERFLOW seats and recompute the "
+                            "quorum; blocks with INSUFFICIENT_SEATS if it can't be met")
         _common(p)
     run_parents[0].set_defaults(func=cmd_run)
     run_parents[1].set_defaults(func=cmd_resume)
