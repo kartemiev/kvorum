@@ -130,8 +130,8 @@ seat's context budget before any API call:
 
 * The packet size is estimated as `len(text) // 4` tokens (plus its UTF-8 bytes).
 * A seat's budget is its `max_context_tokens` when set, otherwise a built-in
-  per-model table: `deepseek-v4-pro` / `qwen3.8-flash` → 128 k, `kimi-k3` /
-  `minimax-m3` → 256 k, `glm-5.2` / `longcat-2.0` → 1 M; unknown models → 1 M.
+  per-model table: `deepseek-v4-pro`, `qwen3.8-flash`, `kimi-k3`, `minimax-m3`,
+  `glm-5.2`, `longcat-2.0` → 1 M; unknown models → 1 M.
 
 Any `OVERFLOW` blocks the run (exit 1) by default. `--skip-overflow` drops the
 overflowing seats and recomputes the quorum from the survivors; if fewer than

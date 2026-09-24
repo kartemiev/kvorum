@@ -49,7 +49,7 @@
       "model": "deepseek-v4-pro",
       "tier": "core",
       "max_tokens": 20000,
-      "max_context_tokens": 128000,
+      "max_context_tokens": 1000000,
       "fallback": [
         { "provider": "openrouter", "model": "deepseek/deepseek-v4-pro" }
       ]
@@ -78,7 +78,7 @@
       "model": "kimi-k3",
       "tier": "core",
       "max_tokens": 40000,
-      "max_context_tokens": 256000,
+      "max_context_tokens": 1000000,
       "fallback": [
         { "provider": "openrouter", "model": "moonshotai/kimi-k3" }
       ]
@@ -92,7 +92,7 @@
       "model": "qwen3.8-flash",
       "tier": "core",
       "max_tokens": 20000,
-      "max_context_tokens": 128000,
+      "max_context_tokens": 1000000,
       "enabled": false,
       "fallback": [
         { "provider": "openrouter", "model": "qwen/qwen3.8-flash" }
@@ -121,7 +121,7 @@
       "model": "minimax-m3",
       "tier": "panel",
       "max_tokens": 20000,
-      "max_context_tokens": 256000,
+      "max_context_tokens": 1000000,
       "fallback": [
         { "provider": "openrouter", "model": "minimax/minimax-m3" }
       ]

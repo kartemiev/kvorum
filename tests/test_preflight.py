@@ -42,6 +42,35 @@ def test_unknown_model_uses_global_limit():
     assert seat_context_limit(seat) == GLOBAL_CONTEXT_LIMIT
 
 
+def test_builtin_table_lists_every_shipped_model_at_one_million():
+    """The built-in table covers all 6 shipped seats and every entry is 1 M.
+
+    Guards the 128 k / 256 k → 1 M bump: a regression back to a smaller default
+    would silently turn large packets into OVERFLOW.
+    """
+    assert set(DEFAULT_CONTEXT_LIMITS) == {
+        "deepseek-v4-pro", "glm-5.2", "kimi-k3",
+        "qwen3.8-flash", "longcat-2.0", "minimax-m3",
+    }
+    assert set(DEFAULT_CONTEXT_LIMITS.values()) == {1_000_000}
+    assert GLOBAL_CONTEXT_LIMIT == 1_000_000
+
+
+def test_short_aliases_without_override_resolve_to_one_million():
+    """Formerly 128 k / 256 k models now resolve to 1 M through the table."""
+    for model in ("deepseek-v4-pro", "qwen3.8-flash", "kimi-k3", "minimax-m3"):
+        seat = Seat("s", "S", "role", "p", model)
+        assert seat_context_limit(seat) == 1_000_000, model
+
+
+def test_provider_prefixed_ids_resolve_to_one_million():
+    """OpenRouter ids (``moonshotai/kimi-k3``) hit the same 1 M table entry."""
+    for model in ("deepseek/deepseek-v4-pro", "qwen/qwen3.8-flash",
+                  "moonshotai/kimi-k3", "minimax/minimax-m3"):
+        seat = Seat("s", "S", "role", "openrouter", model)
+        assert seat_context_limit(seat) == 1_000_000, model
+
+
 def test_check_seats_fit_and_overflow():
     seats = [
         Seat("big", "Big", "r", "p", "m", max_context_tokens=1000),

@@ -113,12 +113,12 @@ DEFAULT_MODEL_ALIASES: dict[str, dict[str, list[str]]] = {
 #: matched case-insensitively on the bare model slug, so provider-prefixed ids
 #: (``z-ai/glm-5.2``) resolve to the same entry as the logical alias (``glm-5.2``).
 DEFAULT_CONTEXT_LIMITS: dict[str, int] = {
-    "deepseek-v4-pro": 128_000,
+    "deepseek-v4-pro": 1_000_000,
     "glm-5.2": 1_000_000,
-    "kimi-k3": 256_000,
-    "qwen3.8-flash": 128_000,
+    "kimi-k3": 1_000_000,
+    "qwen3.8-flash": 1_000_000,
     "longcat-2.0": 1_000_000,
-    "minimax-m3": 256_000,
+    "minimax-m3": 1_000_000,
 }
 
 #: Fallback when a model has no explicit override and no table entry.

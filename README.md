@@ -121,7 +121,7 @@ a chair without touching code. The full field reference (including `role`,
   "model": "minimax-m3",                       // logical name or literal id (see aliases)
   "tier": "panel",
   "max_tokens": 20000,
-  "max_context_tokens": 128000,             // optional context budget (input tokens)
+  "max_context_tokens": 1000000,            // optional context budget (input tokens)
   "enabled": true,
   "fallback": [ { "provider": "openrouter", "model": "minimax/minimax-m3" } ]
 }
@@ -246,9 +246,8 @@ or fails mid-run:
 * Packet size is estimated as `len(text) // 4` tokens (the same `chars / 4` rule
   as the benchmark above) plus its UTF-8 byte size.
 * Each seat's budget is `max_context_tokens` when set, otherwise a built-in
-  per-model table (`deepseek-v4-pro` / `qwen3.8-flash` 128 k, `kimi-k3` /
-  `minimax-m3` 256 k, `glm-5.2` / `longcat-2.0` 1 M; anything unknown falls back
-  to 1 M).
+  per-model table (`deepseek-v4-pro`, `qwen3.8-flash`, `kimi-k3`, `minimax-m3`,
+  `glm-5.2`, `longcat-2.0` → **1 M**; anything unknown also falls back to 1 M).
 
 ```bash
 kvorum run --preflight                 # print the table, then run (or block)
@@ -257,7 +256,7 @@ kvorum run --preflight --skip-overflow # drop OVERFLOW seats, run the rest
 
 | Seat | Model | Limit (tokens) | Packet Size | Status |
 |---|---|---|---|---|
-| DeepSeek-V4-Pro | `deepseek-v4-pro` | 128,000 | 39,000 | FIT |
+| DeepSeek-V4-Pro | `deepseek-v4-pro` | 1,000,000 | 39,000 | FIT |
 | … | … | … | … | … |
 
 **Fail-closed by default:** if any seat reports `OVERFLOW`, `--preflight` exits

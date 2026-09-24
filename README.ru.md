@@ -124,7 +124,7 @@ DeepSeek, SiliconFlow) и локальные серверы (Ollama, vLLM, LiteL
   "model": "minimax-m3",                       // logical name or literal id (see aliases)
   "tier": "panel",
   "max_tokens": 20000,
-  "max_context_tokens": 128000,             // optional context budget (input tokens)
+  "max_context_tokens": 1000000,            // optional context budget (input tokens)
   "enabled": true,
   "fallback": [ { "provider": "openrouter", "model": "minimax/minimax-m3" } ]
 }
@@ -255,9 +255,9 @@ kvorum verdict                              # rebuild the verdict from the merge
 * Размер пакета оценивается как `len(text) // 4` токенов (то же правило
   `символы / 4`, что и в бенчмарке выше) плюс его размер в UTF-8 байтах.
 * Бюджет каждого кресла — это `max_context_tokens`, если он задан, иначе
-  встроенная таблица по моделям (`deepseek-v4-pro` / `qwen3.8-flash` 128 k,
-  `kimi-k3` / `minimax-m3` 256 k, `glm-5.2` / `longcat-2.0` 1 M; всё неизвестное
-  откатывается к 1 M).
+  встроенная таблица по моделям (`deepseek-v4-pro`, `qwen3.8-flash`, `kimi-k3`,
+  `minimax-m3`, `glm-5.2`, `longcat-2.0` → **1 M**; всё неизвестное откатывается
+  к 1 M).
 
 ```bash
 kvorum run --preflight                 # напечатать таблицу, затем запустить (или блокировать)
@@ -266,7 +266,7 @@ kvorum run --preflight --skip-overflow # отбросить OVERFLOW-кресл�
 
 | Кресло | Модель | Лимит (токены) | Размер пакета | Статус |
 |---|---|---|---|---|
-| DeepSeek-V4-Pro | `deepseek-v4-pro` | 128,000 | 39,000 | FIT |
+| DeepSeek-V4-Pro | `deepseek-v4-pro` | 1,000,000 | 39,000 | FIT |
 | … | … | … | … | … |
 
 **Fail-closed по умолчанию:** если хоть одно кресло получает `OVERFLOW`,
