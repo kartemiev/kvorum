@@ -1,5 +1,7 @@
 # kvorum
 
+[English](README.md) | [Русский](README.ru.md)
+
 > **Cross-review by an ensemble of heterogeneous LLMs, with a fail-closed quorum.**
 > One artifact goes out, a panel of independent specialist models answers, and the
 > verdict is authoritative only if a minimum number of seats really answered.
@@ -353,7 +355,7 @@ targeted re-runs; the rest are intentionally left for v0.2:
   `quorum`, `timeouts`, `sections`, and `KVORUM_*` environment overrides.
 * [docs/PROVIDERS.md](docs/PROVIDERS.md) — presets, dual-provider caution,
   custom endpoints & local proxies, rate-limit / serial-run design, execution-time
-  budgeting.
+  budgeting ([Русский](docs/PROVIDERS.ru.md)).
 
 ## Development
 

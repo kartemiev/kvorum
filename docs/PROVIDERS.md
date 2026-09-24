@@ -1,5 +1,7 @@
 # Providers, fallbacks & custom endpoints
 
+[English](PROVIDERS.md) | [Русский](PROVIDERS.ru.md)
+
 kvorum talks only to OpenAI-compatible `{base_url}/chat/completions` endpoints,
 so cloud hosts and local servers are configured identically.
 
