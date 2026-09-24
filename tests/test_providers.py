@@ -154,6 +154,52 @@ def test_fallback_uses_provider_specific_model_name():
     assert seen == [("p.example", "primary-model"), ("b.example", "backup-model")]
 
 
+def test_fallback_scans_per_provider_alias_name(tmp_path):
+    """With per-provider aliases, a fallback switch scans the fallback's OWN id.
+
+    The seat declares one logical ``model`` (``demo-model``) that maps to a
+    different id per provider. When the primary fails, the runner must call the
+    fallback provider with *its* resolved id — never the primary's id and never
+    the unified logical name.
+    """
+    data = {
+        "providers": {
+            "a": {"base_url": "https://a.example/v1", "api_key_env": ["KA"]},
+            "b": {"base_url": "https://b.example/v1", "api_key_env": ["KB"]},
+        },
+        "model_aliases": {"demo-model": {"a": ["a-id"], "b": ["b-id"]}},
+        "seats": [{"seat_id": "s", "seat": "S", "role": "r", "provider": "a",
+                   "model": "demo-model", "fallback": [{"provider": "b"}]}],
+        "quorum": {"required": 1},
+    }
+    path = tmp_path / "panel.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    panel = load_panel(path)
+    seat = panel.seats[0]
+    assert seat.model == "a-id"          # primary resolved to its own provider id
+    assert seat.model_alias == "demo-model"
+
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append((request.url.host, body["model"]))
+        if body["model"] == "a-id":
+            return httpx.Response(500, text="provider outage")
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": answer_text()}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1}})
+
+    result = call_seat(seat, panel, "prompt",
+                       {"KA": "sk-a-12345678", "KB": "sk-b-12345678"},
+                       transport=httpx.MockTransport(handler))
+
+    assert result["fallback_used"] is True
+    assert result["provider"] == "b"
+    assert result["model"] == "b-id"     # fallback scanned its own provider's id
+    assert seen == [("a.example", "a-id"), ("b.example", "b-id")]
+
+
 def test_fallback_inherits_parent_model_when_omitted():
     """A fallback without an explicit `model` uses the seat's model (parent default)."""
     seen: list[str] = []
