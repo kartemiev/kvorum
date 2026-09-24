@@ -14,6 +14,7 @@ import httpx
 from .config import Settings
 from .panel import Panel, Seat, effective_seats, resolve_seat_refs, seat_file_name
 from .prompts import build_prompt, build_resume_prompt
+from .notify import build_summary, notify_completion
 from .providers import call_seat
 from .verdict import extract_verdict, merge_resume
 
@@ -79,6 +80,33 @@ def _merge_seat_statuses(panel: Panel, previous: list[dict],
     return ordered
 
 
+def _read_seat_results(panel: Panel, runs_dir: Path) -> list[dict]:
+    """Read every seat artifact that holds an answer (for the notification summary)."""
+    results: list[dict] = []
+    for seat in panel.seats:
+        path = runs_dir / seat_file_name(seat)
+        if not path.exists():
+            continue
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if record.get("text"):
+            results.append(record)
+    return results
+
+
+def _send_notification(panel: Panel, settings: Settings, started: float) -> None:
+    """Best-effort completion notification (ntfy / webhook); never raises."""
+    results = _read_seat_results(panel, settings.runs_dir)
+    answered = sum(1 for r in results if r.get("text"))
+    summary = build_summary(panel, results, answered,
+                            time.perf_counter() - started, settings.packet_path)
+    outcome = notify_completion(summary)
+    print(f"[notify] ntfy={'sent' if outcome['ntfy'] else 'skipped'} "
+          f"webhook={'sent' if outcome['webhook'] else 'skipped'}", flush=True)
+
+
 def run_panel(panel: Panel, settings: Settings, file_env: dict[str, str], *,
               only: list[str] | None = None,
               skip_seats: list[str] | None = None,
@@ -89,6 +117,7 @@ def run_panel(panel: Panel, settings: Settings, file_env: dict[str, str], *,
               archive: bool = True,
               exclude_env: str | None = None,
               min_delay_s: float = 0.0,
+              notify: bool = False,
               transport: httpx.BaseTransport | None = None) -> int:
     """Run the cross-review and return an exit code (0 quorum, 1 fail-closed, 2 error).
 
@@ -99,6 +128,7 @@ def run_panel(panel: Panel, settings: Settings, file_env: dict[str, str], *,
     re-called and updated. A fresh full run still archives the previous one.
     """
     packet, rules = load_inputs(settings)
+    started = time.perf_counter()
 
     matched_only, unmatched_only = resolve_seat_refs(panel, list(only or []))
     matched_skip, unmatched_skip = resolve_seat_refs(panel, list(skip_seats or []))
@@ -243,6 +273,8 @@ def run_panel(panel: Panel, settings: Settings, file_env: dict[str, str], *,
     print(f"\nanswered this run: {successes} | panel answered: "
           f"{answered_total}/{len(merged_statuses)} | quorum {quorum} -> "
           f"{'QUORUM MET' if quorum_met else 'QUORUM NOT MET'}")
+    if notify:
+        _send_notification(panel, settings, started)
     if not quorum_met and fail_closed and not soft_quorum:
         print("[!] fail-closed — verdict is not authoritative; use --soft-quorum "
               "to accept it anyway")

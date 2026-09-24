@@ -8,6 +8,7 @@ imported on demand via :func:`load_panel`, never required.
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -60,6 +61,20 @@ class ProviderConfig:
     def models_url(self) -> str:
         return f"{self.base_url.rstrip('/')}/models"
 
+    def resolve_base_url(self, override: str = "") -> str:
+        """Effective base URL: explicit override → ``<NAME>_BASE_URL`` env → default.
+
+        A seat/fallback ``base_url`` wins, then a provider-scoped environment
+        variable (``SILICONFLOW_BASE_URL``, ``OPENROUTER_BASE_URL``, ...), then the
+        provider's configured public URL.
+        """
+        if override:
+            return override.rstrip("/")
+        env_url = os.environ.get(f"{self.name.upper()}_BASE_URL")
+        if env_url:
+            return env_url.rstrip("/")
+        return self.base_url.rstrip("/")
+
 
 #: Logical model → per-provider ids, ordered by preference. A seat may declare the
 #: logical name as its ``model`` and every provider gets its own id (the SSOT for
@@ -99,11 +114,13 @@ class Fallback:
     """Secondary provider used only when the primary returns no visible text.
 
     ``model`` may be omitted when the seat's model alias already declares an id
-    for that provider (per-provider naming).
+    for that provider (per-provider naming). ``base_url`` optionally overrides
+    the endpoint for this fallback (custom endpoint / local proxy).
     """
 
     provider: str
     model: str = ""
+    base_url: str = ""
 
 
 @dataclass
@@ -126,6 +143,8 @@ class Seat:
     max_tokens: int = 20000
     #: One fallback or a chain of them (tried in order when the primary is silent).
     fallback: Fallback | tuple[Fallback, ...] | None = None
+    #: Optional endpoint override for this seat (beats env and provider default).
+    base_url: str = ""
     extra_body: dict = field(default_factory=dict)
     #: Free-form longer role description, appended to the role inside prompts.
     description: str = ""
@@ -341,8 +360,9 @@ def _fallback_from_raw(raw) -> Fallback | tuple[Fallback, ...] | None:
     if raw is None:
         return None
     if isinstance(raw, dict):
-        return Fallback(raw["provider"], raw.get("model", ""))
-    items = tuple(Fallback(item["provider"], item.get("model", "")) for item in raw)
+        return Fallback(raw["provider"], raw.get("model", ""), raw.get("base_url", ""))
+    items = tuple(Fallback(item["provider"], item.get("model", ""),
+                           item.get("base_url", "")) for item in raw)
     return items or None
 
 
@@ -365,6 +385,7 @@ def _panel_from_dict(data: dict, inherit: dict[str, ProviderConfig] | None = Non
             tier=raw.get("tier", "core"),
             max_tokens=int(raw.get("max_tokens", 20000)),
             fallback=_fallback_from_raw(raw.get("fallback")),
+            base_url=raw.get("base_url", ""),
             extra_body=dict(raw.get("extra_body") or {}),
             description=raw.get("description", ""),
             enabled=(bool(raw.get("enabled", True))

@@ -43,17 +43,22 @@ def model_missing(http: int | None, error: str | None) -> bool:
 
 
 def post_chat(provider: ProviderConfig, model: str, key: str, payload: dict,
-              timeout_s: float, *, transport: httpx.BaseTransport | None = None
-              ) -> tuple[int | None, str, dict | None, str | None]:
-    """One chat-completion call → ``(http, text, usage, error)``."""
+              timeout_s: float, *, transport: httpx.BaseTransport | None = None,
+              base_url: str = "") -> tuple[int | None, str, dict | None, str | None]:
+    """One chat-completion call → ``(http, text, usage, error)``.
+
+    ``base_url`` is a seat/fallback override; empty means "resolve env / provider
+    default".
+    """
     headers = {"Content-Type": "application/json"}
     if key:
         headers["Authorization"] = f"Bearer {key}"
     headers.update(provider.extra_headers)
+    url = f"{provider.resolve_base_url(base_url)}/chat/completions"
     try:
         with httpx.Client(timeout=httpx.Timeout(timeout_s, connect=30.0),
                           transport=transport) as client:
-            response = client.post(provider.chat_url(), headers=headers, json=payload)
+            response = client.post(url, headers=headers, json=payload)
     except Exception as exc:  # noqa: BLE001
         return None, "", None, f"{type(exc).__name__}: {clean(exc)}"
 
@@ -92,13 +97,14 @@ def call_seat(seat: Seat, panel: Panel, prompt: str, file_env: dict[str, str], *
     # A model alias drives per-provider ids: the seat's own id is used only when
     # it is a literal (no alias table), so fallbacks can pick their own name.
     primary_declared = "" if seat.model_alias else seat.model
-    candidates: list[tuple[str, str, float, bool]] = [
-        (seat.provider, primary_declared, primary_timeout, False)]
+    candidates: list[tuple[str, str, float, bool, str]] = [
+        (seat.provider, primary_declared, primary_timeout, False, seat.base_url)]
     if use_fallback:
         candidates.extend(
-            (fb.provider, fb.model, fb_timeout, True) for fb in seat.fallback_chain)
+            (fb.provider, fb.model, fb_timeout, True, fb.base_url)
+            for fb in seat.fallback_chain)
 
-    for provider_name, declared, tmo, is_fallback in candidates:
+    for provider_name, declared, tmo, is_fallback, base_url_override in candidates:
         provider = panel.provider(provider_name)
         key, source = resolve_key(provider.api_key_env, file_env)
         model_ids = seat.model_ids_for(provider_name, declared)
@@ -128,13 +134,15 @@ def call_seat(seat: Seat, panel: Panel, prompt: str, file_env: dict[str, str], *
 
             started = time.perf_counter()
             http, text, usage, error = post_chat(provider, model, key, payload, tmo,
-                                                 transport=transport)
+                                                 transport=transport,
+                                                 base_url=base_url_override)
             retried_budget = False
             if (not text and http in (400, 413) and seat.max_tokens > budget
                     and not model_missing(http, error)):
                 payload["max_tokens"] = budget
                 http, text, usage, error = post_chat(provider, model, key, payload, tmo,
-                                                     transport=transport)
+                                                     transport=transport,
+                                                     base_url=base_url_override)
                 retried_budget = True
             ms = int((time.perf_counter() - started) * 1000)
             attempts.append({
@@ -190,8 +198,9 @@ def verify_models(panel: Panel, file_env: dict[str, str], *,
             continue
         try:
             with httpx.Client(timeout=30.0, transport=transport) as client:
-                response = client.get(provider.models_url(),
-                                      headers={"Authorization": f"Bearer {key}"})
+                response = client.get(
+                    f"{provider.resolve_base_url()}/models",
+                    headers={"Authorization": f"Bearer {key}"})
             ids = ([item.get("id") for item in (response.json().get("data") or [])]
                    if response.status_code == 200 else [])
             catalogues[name] = ids

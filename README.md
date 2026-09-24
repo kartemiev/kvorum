@@ -212,6 +212,51 @@ The same seat model ids keep working across providers because each seat stores
 both the OpenRouter slug (`z-ai/glm-5.2`) and the provider-native id
 (`zai-org/GLM-5.2`) as primary/fallback pairs.
 
+## Custom Endpoints & Local Proxies
+
+Every provider is just an OpenAI-compatible `{base_url}/chat/completions`, so a
+seat can point at any endpoint — a self-hosted vLLM/Ollama/LiteLLM gateway, a
+proxy, or a mirror — without touching the provider registry.
+
+The endpoint is resolved with this precedence (highest first):
+
+1. an explicit `base_url` on the seat or its fallback object;
+2. a `<NAME>_BASE_URL` environment variable (`SILICONFLOW_BASE_URL`,
+   `OPENROUTER_BASE_URL`, `OPENAI_BASE_URL`, `OLLAMA_BASE_URL`, ...);
+3. the provider's default public URL from the `providers` block.
+
+Per-seat override:
+
+```jsonc
+{
+  "seats": [
+    {
+      "seat_id": "architect",
+      "seat": "GLM-5.2",
+      "role": "Lead Architecture Critic",
+      "provider": "siliconflow",
+      "model": "glm-5.2",
+      "base_url": "http://127.0.0.1:8000/v1",          // this seat hits a local vLLM
+      "fallback": [
+        { "provider": "openrouter", "model": "z-ai/glm-5.2",
+          "base_url": "http://127.0.0.1:8080/v1" }       // fallback hits LiteLLM
+      ]
+    }
+  ]
+}
+```
+
+Environment-wide override (no config edit):
+
+```bash
+export SILICONFLOW_BASE_URL=http://127.0.0.1:8000/v1   # vLLM / LiteLLM gateway
+export OPENROUTER_BASE_URL=http://127.0.0.1:8080/v1
+export OPENAI_BASE_URL=http://127.0.0.1:11434/v1       # Ollama
+```
+
+Local servers usually need no key; set `OLLAMA_API_KEY=` (or the provider's
+`api_key_env`) to any value if one is still required.
+
 ## Rate-Limit & Concurrency Control
 
 `kvorum` is designed for providers with strict concurrency/RPM limits (OpenRouter
@@ -243,6 +288,25 @@ whole point of the rate-limit protection above). Budget for it:
   silently truncates such seats;
 * targeted re-runs (`kvorum run --seats <id>`) cost minutes instead of a full panel.
 
+## Notifications (ntfy / webhook)
+
+When a run finishes, `kvorum` can push a one-line summary to **ntfy.sh** and/or
+any **generic webhook** (a Slack/Telegram relay, CI, ...). No backend is required.
+
+* `KVORUM_NTFY_TOPIC` → POST the summary text to `https://ntfy.sh/<topic>` with a
+  `Title: kvorum Audit Finished` header.
+* `KVORUM_NOTIFY_WEBHOOK` → POST a JSON summary (verdict, votes, quorum, tokens,
+  elapsed seconds, cost when the provider reports it).
+
+```bash
+export KVORUM_NTFY_TOPIC=kvorum-<your-topic>
+export KVORUM_NOTIFY_WEBHOOK=https://hooks.example.com/kvorum
+kvorum run --notify          # --notify is implied once either variable is set
+```
+
+Notifications are **fail-safe**: a 2 s timeout and a swallowed network error can
+never fail the run.
+
 ## CLI
 
 | Command | Purpose |
@@ -257,8 +321,8 @@ whole point of the rate-limit protection above). Budget for it:
 
 Flags: `--seats` / `--only-seats`, `--skip-seats`, `--include-excluded`,
 `--no-fallback`, `--soft-quorum`, `--no-archive`, `--timeout`,
-`--fallback-timeout`, `--min-delay-s`, `--panel`, `--packet`, `--rules`,
-`--runs-dir`, `--env-file`.
+`--fallback-timeout`, `--min-delay-s`, `--notify`, `--panel`, `--packet`,
+`--rules`, `--runs-dir`, `--env-file`.
 
 ### Targeted re-runs (cheap offsets)
 

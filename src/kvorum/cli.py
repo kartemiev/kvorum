@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .config import Settings, load_env_file
 from .context import build_packet
+from .notify import notify_enabled
 from .panel import load_panel, effective_seats, seat_file_name
 from .prompts import build_prompt, build_resume_prompt
 from .providers import verify_models
@@ -179,6 +180,7 @@ def _run_common(args: argparse.Namespace, resume: bool) -> int:
         archive=not args.no_archive,
         exclude_env=os.environ.get("COUNCIL_EXCLUDE_MODELS"),
         min_delay_s=settings.min_delay_s,
+        notify=notify_enabled(args.notify),
     )
 
 
@@ -279,6 +281,10 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--min-delay-s", type=float, default=None,
                        help="pause between seat calls in seconds (serial run; "
                             "respect provider RPM limits)")
+        p.add_argument("--notify", action="store_true",
+                       help="send a completion notification (ntfy/webhook); "
+                            "auto-enabled when KVORUM_NTFY_TOPIC or "
+                            "KVORUM_NOTIFY_WEBHOOK is set")
         _common(p)
     run_parents[0].set_defaults(func=cmd_run)
     run_parents[1].set_defaults(func=cmd_resume)

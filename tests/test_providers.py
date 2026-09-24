@@ -260,3 +260,102 @@ def test_model_missing_walks_alias_alternatives(tmp_path):
     assert result["attempts"][0]["model_index"] == 0
     assert result["attempts"][1]["model_index"] == 1
 
+
+def test_resolve_base_url_precedence(monkeypatch):
+    provider = ProviderConfig("primary", "https://default.example/v1")
+    assert provider.resolve_base_url() == "https://default.example/v1"
+    assert provider.resolve_base_url("https://seat.example/v1") == "https://seat.example/v1"
+    monkeypatch.setenv("PRIMARY_BASE_URL", "https://env.example/v1")
+    assert provider.resolve_base_url() == "https://env.example/v1"
+    # an explicit seat/fallback override still beats the environment
+    assert provider.resolve_base_url("https://seat.example/v1") == "https://seat.example/v1"
+
+
+def test_seat_base_url_override(tmp_path):
+    data = {
+        "providers": {"primary": {"base_url": "https://p.example/v1",
+                                  "api_key_env": ["PRIMARY_KEY"]}},
+        "seats": [{"seat_id": "s", "seat": "S", "role": "r", "provider": "primary",
+                   "model": "m", "base_url": "https://custom.example/v1"}],
+        "quorum": {"required": 1},
+    }
+    path = tmp_path / "panel.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    panel = load_panel(path)
+    seat = panel.seats[0]
+
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.host, json.loads(request.content)["model"]))
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": answer_text()}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1}})
+
+    result = call_seat(seat, panel, "prompt", {"PRIMARY_KEY": "sk-x-12345678"},
+                       transport=httpx.MockTransport(handler))
+    assert result["fallback_used"] is False
+    assert seen == [("custom.example", "m")]
+
+
+def test_fallback_base_url_override(tmp_path):
+    data = {
+        "providers": {
+            "a": {"base_url": "https://a.example/v1", "api_key_env": ["KA"]},
+            "b": {"base_url": "https://b.example/v1", "api_key_env": ["KB"]},
+        },
+        "seats": [{"seat_id": "s", "seat": "S", "role": "r", "provider": "a",
+                   "model": "m",
+                   "fallback": [{"provider": "b", "base_url": "https://fb.example/v1"}]}],
+        "quorum": {"required": 1},
+    }
+    path = tmp_path / "panel.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    panel = load_panel(path)
+    seat = panel.seats[0]
+
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        host = request.url.host
+        seen.append(host)
+        if host == "a.example":
+            return httpx.Response(500, text="provider outage")
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": answer_text()}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1}})
+
+    result = call_seat(seat, panel, "prompt",
+                       {"KA": "sk-a-12345678", "KB": "sk-b-12345678"},
+                       transport=httpx.MockTransport(handler))
+    assert result["fallback_used"] is True
+    assert result["provider"] == "b"
+    assert seen == ["a.example", "fb.example"]
+
+
+def test_env_base_url_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("PRIMARY_BASE_URL", "https://env.example/v1")
+    data = {
+        "providers": {"primary": {"base_url": "https://p.example/v1",
+                                  "api_key_env": ["PRIMARY_KEY"]}},
+        "seats": [{"seat_id": "s", "seat": "S", "role": "r", "provider": "primary",
+                   "model": "m"}],
+        "quorum": {"required": 1},
+    }
+    path = tmp_path / "panel.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    panel = load_panel(path)
+    seat = panel.seats[0]
+
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.host)
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": answer_text()}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1}})
+
+    call_seat(seat, panel, "prompt", {"PRIMARY_KEY": "sk-x-12345678"},
+              transport=httpx.MockTransport(handler))
+    assert seen == ["env.example"]
+
