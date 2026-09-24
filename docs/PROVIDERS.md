@@ -88,12 +88,22 @@ loudly instead of silently dropping seats.
 
 ## Execution time & heavy models
 
-The shipped seats are 1M-context reasoning models that emit long `<think>` chains
-and run sequentially on purpose. Budget:
+The shipped seats are 1M-context reasoning models that emit long reasoning chains
+and run sequentially on purpose. Live 6-seat OpenRouter run (153.7 KB packet):
 
-* a full 6-seat run takes ~10–15 minutes (~1000–1100 s of model latency plus
-  `--min-delay-s` pauses);
-* a single seat can take 5–6 minutes (Kimi-K3 answered in 355 s, Qwen in 324 s in
-  the shipped benchmark), so keep `--timeout` at **600 s** — a 300 s cap silently
-  truncates such seats;
-* targeted re-runs (`kvorum run --seats <id>`) cost minutes instead of a full panel.
+| Seat | Latency |
+|---|---|
+| DeepSeek-V4-Pro | 452.7 s |
+| LongCat-2.0 | 296.0 s |
+| Qwen3.8-Flash | 229.5 s |
+| Kimi-K3 | 195.1 s |
+| MiniMax-M3 | 130.5 s |
+| GLM-5.2 | 49.2 s |
+| **Total** | **1 353 s (~24 min wall-clock)** |
+
+Budget: a full 6-seat run takes ~20–25 minutes (1 300–1 500 s of model latency
+plus `--min-delay-s` pauses); a single seat can exceed **7 minutes**
+(DeepSeek-V4-Pro at 452.7 s here), so keep `--timeout` at **600 s** — a 300 s cap
+silently truncates such seats. Targeted re-runs (`kvorum run --seats <id>`) cost
+minutes instead of a full panel. Full token/cost breakdown: see the Dogfooding
+benchmark in [../README.md](../README.md).

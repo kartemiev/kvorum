@@ -222,8 +222,10 @@ list-seats` to see valid ids.
 ## Context & AST
 
 `pack` builds the review packet from globs or a manifest with a hard character
-budget; `--ast-summary` embeds symbols, signatures and imports (stdlib `ast`,
-Python) so large codebases fit without pasting every body.
+budget. `--ast-summary` **adds** a compact symbols/signatures/imports section
+(stdlib `ast`, Python-only) on top of the embedded sources — the bodies are still
+pasted until `--max-chars` is reached, so it is a navigation aid, not a
+body-replacement switch.
 
 ## Artifacts
 
@@ -247,47 +249,75 @@ Roadmap). Review packets are built only from files you select.
 
 ## Dogfooding & Real-World Benchmark
 
-kvorum's first real review targeted **its own source**
-(`kvorum pack --include 'src/**/*.py' --ast-summary` → a 70 KB packet), run as a
-full 6-seat quorum:
+kvorum reviews **its own source**. The live run below used the OpenRouter preset
+(`examples/panel.openrouter.json` — OpenRouter primary for every seat, SiliconFlow /
+DeepSeek native as fallbacks), a 6-seat quorum *including* the default-excluded
+`code-expert` seat, and OpenRouter's own reported per-call cost:
 
 ```bash
-kvorum pack --include 'src/**/*.py' --ast-summary
-kvorum run  --min-delay-s 10 --timeout 600 --include-excluded
+kvorum pack --include 'src/**/*.py' --include 'tests/**/*.py' \
+            --include '*.md' --include '*.toml' --include 'examples/*.json' \
+            --max-chars 200000                       # -> 153.7 KB packet
+kvorum run --panel examples/panel.openrouter.json \
+           --min-delay-s 5 --timeout 600 --include-excluded
 kvorum verdict
 ```
 
-| Model | Provider | In Tokens | Out Tokens | Time (s) | Cost ($) |
-|---|---|---|---|---|---|
-| DeepSeek-V4-Pro | deepseek (native) | 19 429 | 16 253 | 167 | 0.0762 \* |
-| GLM-5.2 | openrouter (fallback) | 17 867 | 4 441 | 38 | 0.0446 † |
-| Kimi-K3 | siliconflow | 17 915 | 12 912 | 355 | 0.2474 \* |
-| Qwen3.8-Flash | siliconflow | 19 305 | 11 436 | 324 | 0.0083 \* |
-| LongCat-2.0 | siliconflow | 18 142 | 10 596 | 139 | 0.0000 \* |
-| MiniMax-M3 | siliconflow | 18 330 | 11 456 | 72 | 0.0192 \* |
-| **Total** | | **110 988** | **67 094** | **1 095** | **0.3957** |
+| Metric | Value |
+|---|---|
+| Packet | **157 352 bytes ≈ 153.7 KB** · 157 176 chars · ~39 k tokens (est.) · 27 files / 6 328 lines |
+| Panel | 6 seats — **all answered on the OpenRouter primary, 0 fallbacks used** |
+| Wall-clock | **≈ 24 min** (06:15:34 → 06:38:32 UTC) · 1 353 s of model latency |
+| Tokens | **253 662 in / 88 559 out = 342 221 total** |
+| Cost | **$0.6576** — actual `usage.cost` reported by OpenRouter |
+| Quorum | **MET** — 6/6 answered (required 3, fail-closed) |
+| Verdict | **`CHANGES REQUESTED`** — votes `{CHANGES REQUESTED: 5, n/a: 1}`, 25 critical findings |
 
-**Total: 178 082 tokens, ≈ $0.40 for the full 6-seat quorum.**
+| Seat | OpenRouter model | HTTP | Time (s) | In | Out | Cost ($) |
+|---|---|---|---|---|---|---|
+| DeepSeek-V4-Pro | `deepseek/deepseek-v4-pro` | 200 | 452.7 | 43 962 | 19 610 | 0.1006 |
+| GLM-5.2 | `z-ai/glm-5.2` | 200 | 49.2 | 40 965 | 5 144 | 0.0800 |
+| Kimi-K3 | `moonshotai/kimi-k3` | 200 | 195.1 | 40 852 | 18 590 | 0.4014 |
+| Qwen3.8-Flash | `qwen/qwen3.8-flash` | 200 | 229.5 | 44 377 | 14 137 | 0.0133 |
+| LongCat-2.0 | `meituan/longcat-2.0` | 200 | 296.0 | 41 890 | 16 830 | 0.0328 |
+| MiniMax-M3 | `minimax/minimax-m3` | 200 | 130.5 | 41 616 | 14 248 | 0.0296 |
+| **Total** | | | **1 353** | **253 662** | **88 559** | **0.6576** |
 
-\* estimated from the panel price registry (SiliconFlow/DeepSeek return tokens but
-not a cost field). † actual cost reported by the provider (OpenRouter).
+The prompt side (~41–44 k tokens per seat) matches the 153.7 KB packet, so the
+`chars / 4` estimate held. An earlier **SiliconFlow-primary** run of the same panel
+answer 3/5 seats and needed `--min-delay-s` (SiliconFlow returned HTTP 429) plus
+`--timeout 600` (Kimi-K3 answered at 355 s, past a 300 s cap) — the OpenRouter
+primary run above answered 6/6 without a single fallback.
 
-What the tuning bought — **6/6 seats answered** (vs 3/5 without the flags),
-quorum **MET**, verdict **`CHANGES REQUESTED`** with 23 critical findings:
+### What the review found
 
-* **`--timeout 600` recovered Kimi-K3** — it answered in 355 s, past the previous
-  300 s cap that had cut it off mid-generation.
-* **`--min-delay-s 10` + the OpenRouter fallback recovered GLM-5.2** — SiliconFlow
-  throttled the primary call with HTTP 429, and the fallback answered in 38 s, so
-  the run stayed lossless instead of dropping the seat.
-* MiniMax-M3 returned a full answer but wrapped it in a `<think>` block, so its
-  verdict heading did not parse (`n/a`) — see v0.2 item 7.
+All six seats returned `CHANGES REQUESTED`. MiniMax-M3 produced a full answer
+(9 934 chars) but wrapped it in a reasoning block, so its verdict heading did not
+parse (`n/a`) — the recurring format fragility (Roadmap #7). Beyond the tracked
+backlog, this round surfaced:
+
+* **`consolidate()` can fail open** — a panel whose answers are all unparseable
+  (`n/a`) consolidates to `APPROVE`, contradicting the fail-closed contract
+  (Kimi-K3). The single `n/a` seat above is that path in miniature.
+* **`run` and `verdict` disagree on quorum** — `build_verdict_json` reads
+  `panel.quorum_required`/`fail_closed`, while `run` applies the effective
+  `KVORUM_*`/CLI overrides, so an exit-0 run can still yield `"met": false` (GLM-5.2).
+* **`--ast-summary` is additive, not a body replacement** — it matched neither its
+  own CLI help nor the previous README wording (DeepSeek-V4-Pro); the docs above
+  are now corrected.
+* **`verdict` globs every `runs/*.json`** without filtering to the current panel, so
+  retired seats can leak into an authoritative verdict (Qwen3.8-Flash).
+* **`--seats` bypasses `Seat.enabled`/`excluded_by_default`** (Qwen3.8-Flash), and a
+  non-empty `COUNCIL_EXCLUDE_MODELS` re-enables per-seat-disabled seats
+  (DeepSeek-V4-Pro) — both can run paid seats unintentionally.
+* **`scan_secrets` is still unwired**, and its patterns duplicate/diverge from
+  `config.REDACT` (Qwen3.8-Flash).
 
 ## Roadmap: v0.2 Backlog
 
-Issues surfaced by the full 6-seat self-review above (23 critical findings).
-Items 1 and 3 were closed while adding customizable seats and targeted re-runs;
-the rest are intentionally left for v0.2:
+Issues surfaced by the 6-seat self-reviews above (25 critical findings in the
+latest run). Items 1 and 3 were closed while adding customizable seats and
+targeted re-runs; the rest are intentionally left for v0.2:
 
 1. ~~**`resume` broke with the default `--archive` (critical)**~~ — **fixed**:
    partial and `resume` runs no longer archive the directory, and targeted re-runs
@@ -304,6 +334,17 @@ the rest are intentionally left for v0.2:
    wrapped in `<think>…</think>` (a real 6/6-run case) → reports "n/a".
 8. **`pack` manifest/include ordering** — manifest entries are prepended to includes.
 9. **`merge_resume` keeps stale top-level metadata** (provider/model/http/ms).
+10. **`consolidate()` fails open** — a panel whose answers are all unparseable
+    (`n/a`) consolidates to `APPROVE`, contradicting the fail-closed contract.
+11. **`run` and `verdict` disagree on quorum** — `build_verdict_json` reads the
+    panel values instead of the effective `KVORUM_*`/CLI overrides recorded in
+    `run_meta.json`, so an exit-0 run can yield `"met": false`.
+12. **`--ast-summary` is additive, not exclusive** — it adds a summary on top of
+    the embedded bodies (CLI help/README wording now corrected).
+13. **`verdict` mixes stale seat artifacts** — it globs every `runs/*.json`
+    regardless of the current panel, so retired seats can enter the verdict.
+14. **`dry-run` does not validate `--seats`** — a typo silently writes prompts for
+    the whole panel (`run` correctly exits 2).
 
 ## Documentation
 
